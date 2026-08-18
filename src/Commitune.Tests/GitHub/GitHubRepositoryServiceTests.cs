@@ -13,7 +13,7 @@ namespace Commitune.Tests.GitHub;
 /// </summary>
 public class GitHubRepositoryServiceTests
 {
-    private const string AccessToken = "gho_notARealTokenJustForTests";
+    private const string AccessToken = FakeGitHub.AccessToken;
 
     private const string CreatedRepositoryJson = """
         {"id":1,"name":"diario","full_name":"tester/diario","private":true,
@@ -22,19 +22,7 @@ public class GitHubRepositoryServiceTests
 
     private static (GitHubRepositoryService Service, FakeHttpMessageHandler Handler) CreateService(
         Action<FakeHttpMessageHandler> configure)
-    {
-        var handler = new FakeHttpMessageHandler();
-        configure(handler);
-
-        var connection = new Connection(
-            new ProductHeaderValue("Commitune-tests"),
-            new Uri("https://api.github.com"),
-            new InMemoryCredentialStore(new Credentials(AccessToken)),
-            new HttpClientAdapter(() => handler),
-            new SimpleJsonSerializer());
-
-        return (new GitHubRepositoryService(new StubClientFactory(new GitHubClient(connection))), handler);
-    }
+        => FakeGitHub.CreateService(configure);
 
     [Fact]
     public async Task Sends_private_true_when_creating_the_repository()
@@ -98,10 +86,5 @@ public class GitHubRepositoryServiceTests
             () => service.CreatePrivateRepositoryAsync(AccessToken, "  ", CancellationToken.None));
 
         Assert.Empty(handler.Requests);
-    }
-
-    private sealed class StubClientFactory(IGitHubClient client) : IGitHubClientFactory
-    {
-        public IGitHubClient Create(string accessToken) => client;
     }
 }

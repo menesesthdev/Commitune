@@ -12,7 +12,8 @@ public sealed class ConversationHandler(
     IBotMessenger messenger,
     IOAuthStateProtector stateProtector,
     IGitHubOAuthService gitHubOAuth,
-    IRepositoryProvisioner repositoryProvisioner) : IConversationHandler
+    IRepositoryProvisioner repositoryProvisioner,
+    IEntryCommitter entryCommitter) : IConversationHandler
 {
     public Task HandleAsync(BotUser user, string text, CancellationToken cancellationToken)
     {
@@ -106,8 +107,7 @@ public sealed class ConversationHandler(
                 break;
 
             case OnboardingState.Ready:
-                // The commit pipeline lands in the next slice.
-                await messenger.SendTextAsync(user.TelegramChatId, BotReplies.ComingSoon, cancellationToken);
+                await CommitEntryAsync(user, text, cancellationToken);
                 break;
 
             case OnboardingState.Paused:
@@ -154,6 +154,41 @@ public sealed class ConversationHandler(
                 // The provisioner already put the user back in AwaitingGithubAuth, so the
                 // reply is the link itself rather than an instruction to go find it.
                 await SendAuthorizationLinkAsync(user, BotReplies.AuthorizationExpired, cancellationToken);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The product itself: a message from a <see cref="OnboardingState.Ready"/> user becomes a
+    /// commit. Every outcome answers — a message swallowed in silence is the churn risk.
+    /// </summary>
+    private async Task CommitEntryAsync(BotUser user, string text, CancellationToken cancellationToken)
+    {
+        var result = await entryCommitter.CommitAsync(user, text, cancellationToken);
+
+        switch (result.Outcome)
+        {
+            case EntryCommitOutcome.Committed:
+                await messenger.SendTextAsync(
+                    user.TelegramChatId, BotReplies.EntryCommitted(result.Url), cancellationToken);
+                break;
+
+            case EntryCommitOutcome.AuthorizationExpired:
+                // The committer already put the user back in AwaitingGithubAuth; the reply is
+                // the reconnect link itself rather than an instruction to go find it.
+                await SendAuthorizationLinkAsync(
+                    user, BotReplies.AuthorizationExpiredWhileCommitting, cancellationToken);
+                break;
+
+            case EntryCommitOutcome.RepositoryMissing:
+                // Back in AwaitingRepoName, so the next message is read as the new name.
+                await messenger.SendTextAsync(
+                    user.TelegramChatId, BotReplies.RepositoryMissing, cancellationToken);
+                break;
+
+            case EntryCommitOutcome.Failed:
+                await messenger.SendTextAsync(
+                    user.TelegramChatId, BotReplies.CommitFailed, cancellationToken);
                 break;
         }
     }

@@ -22,9 +22,10 @@ public class ConversationHandlerTests
         Options.Create(new GitHubOptions()));
 
     private readonly FakeRepositoryProvisioner _provisioner = new();
+    private readonly FakeEntryCommitter _committer = new();
 
     private ConversationHandler CreateHandler()
-        => new(_users, _messenger, _stateProtector, new StubGitHubOAuthService(), _provisioner);
+        => new(_users, _messenger, _stateProtector, new StubGitHubOAuthService(), _provisioner, _committer);
 
     private Task HandleAsync(OnboardingState state, string text)
     {
@@ -211,6 +212,78 @@ public class ConversationHandlerTests
         await HandleAsync(OnboardingState.AwaitingGithubAuth, "minha primeira anotação");
 
         Assert.NotNull(_messenger.Single.Link);
+    }
+
+    /// <summary>
+    /// The whole point of the product: a Ready user's message is an entry, and it goes to the
+    /// committer exactly as typed — trimming and formatting belong further down.
+    /// </summary>
+    [Fact]
+    public async Task Text_received_while_ready_is_committed_as_an_entry()
+    {
+        await HandleAsync(OnboardingState.Ready, "hoje eu terminei a fatia 3");
+
+        Assert.Equal("hoje eu terminei a fatia 3", _committer.CommittedText);
+        Assert.Equal(OnboardingState.Ready, StateOf());
+    }
+
+    [Fact]
+    public async Task A_committed_entry_is_confirmed_with_the_link_to_it()
+    {
+        await HandleAsync(OnboardingState.Ready, "uma anotação");
+
+        Assert.Contains(FakeEntryCommitter.EntryUrl.ToString(), _messenger.Single.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_committed_entry_is_confirmed_even_when_github_returns_no_link()
+    {
+        _committer.Result = new EntryCommitResult(EntryCommitOutcome.Committed);
+
+        await HandleAsync(OnboardingState.Ready, "uma anotação");
+
+        Assert.Equal(BotReplies.EntryCommitted(null), _messenger.Single.Text);
+    }
+
+    /// <summary>
+    /// A failed commit that says nothing is the churn risk CLAUDE.md calls out by name: the
+    /// user believes the entry is safe, and finds out days later that it never existed.
+    /// </summary>
+    [Fact]
+    public async Task A_failed_commit_says_the_message_was_not_saved()
+    {
+        _committer.Result = new EntryCommitResult(EntryCommitOutcome.Failed);
+
+        await HandleAsync(OnboardingState.Ready, "uma anotação");
+
+        Assert.Equal(BotReplies.CommitFailed, _messenger.Single.Text);
+        Assert.Equal(OnboardingState.Ready, StateOf());
+    }
+
+    [Fact]
+    public async Task An_expired_authorization_mid_entry_replies_with_a_fresh_link()
+    {
+        _committer.Result = new EntryCommitResult(EntryCommitOutcome.AuthorizationExpired);
+
+        await HandleAsync(OnboardingState.Ready, "uma anotação");
+
+        Assert.Equal(OnboardingState.AwaitingGithubAuth, StateOf());
+        Assert.NotNull(_messenger.Single.Link);
+    }
+
+    /// <summary>
+    /// The repository is gone, so the user is back on the naming step — and the reply has to
+    /// be the question they are now expected to answer.
+    /// </summary>
+    [Fact]
+    public async Task A_missing_repository_asks_for_a_new_name()
+    {
+        _committer.Result = new EntryCommitResult(EntryCommitOutcome.RepositoryMissing);
+
+        await HandleAsync(OnboardingState.Ready, "uma anotação");
+
+        Assert.Equal(OnboardingState.AwaitingRepoName, StateOf());
+        Assert.Equal(BotReplies.RepositoryMissing, _messenger.Single.Text);
     }
 
     [Fact]

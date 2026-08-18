@@ -177,12 +177,10 @@ public class RepositoryProvisionerTests
             return Task.FromResult(new RepositoryReference("tester", repositoryName));
         }
 
-        public Task CommitEntryAsync(
+        public Task<CommittedEntry> CommitEntryAsync(
             string accessToken,
             RepositoryReference repository,
-            string path,
-            string content,
-            string commitMessage,
+            DiaryEntry entry,
             CancellationToken cancellationToken)
             => throw new NotSupportedException();
     }

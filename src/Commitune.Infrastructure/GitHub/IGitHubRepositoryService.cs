@@ -12,14 +12,13 @@ public interface IGitHubRepositoryService
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Writes an entry through the Contents API. Implementations must handle the
-    /// <c>409</c> stale-sha conflict by re-fetching the file and retrying.
+    /// Appends an entry to its day's file through the Contents API, creating the file when the
+    /// day is new. Implementations must handle the <c>409</c> stale-sha conflict by re-fetching
+    /// the file and retrying.
     /// </summary>
-    Task CommitEntryAsync(
+    Task<CommittedEntry> CommitEntryAsync(
         string accessToken,
         RepositoryReference repository,
-        string path,
-        string content,
-        string commitMessage,
+        DiaryEntry entry,
         CancellationToken cancellationToken);
 }

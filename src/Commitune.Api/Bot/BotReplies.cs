@@ -38,6 +38,11 @@ public static class BotReplies
         "Sua autorização do GitHub não vale mais — pode ter sido revogada por lá. " +
         "Mande /start para reconectar.";
 
+    /// <summary>Same problem, mid-entry — so it also has to say the message was not committed.</summary>
+    public const string AuthorizationExpiredWhileCommitting =
+        "Sua autorização do GitHub não vale mais, então essa mensagem <b>não</b> foi commitada. " +
+        "Reconecte no botão abaixo e me mande ela de novo.";
+
     public const string RepoNameTaken =
         "Você já tem um repositório com esse nome. Me manda outro?";
 
@@ -92,9 +97,24 @@ public static class BotReplies
         "Tente de novo em instantes — se continuar, mande /start para eu revisar sua conexão.";
 
     /// <summary>
-    /// Placeholder for the states whose behaviour lands in the next slices. It exists so no
-    /// path can end in silence: a message accepted without a reply is the bug we're avoiding.
+    /// The one reply the product exists for. The link is what turns "it says it worked" into
+    /// "I can see it", so it is included whenever GitHub hands one back.
     /// </summary>
-    public const string ComingSoon =
-        "Recebi sua mensagem! O commit em si ainda está sendo ligado — te aviso assim que estiver de pé.";
+    public static string EntryCommitted(Uri? url)
+        => url is null
+            ? "Commitado ✅"
+            : $"Commitado ✅ — <a href=\"{url}\">ver no GitHub</a>";
+
+    /// <summary>
+    /// The repository is not there anymore. Says outright that the message was lost — the user
+    /// will find out either way, and finding out from the commit that never appeared is worse.
+    /// </summary>
+    public const string RepositoryMissing =
+        "Não encontrei mais o repositório onde eu commitava — ele pode ter sido apagado ou " +
+        "renomeado no GitHub, e por isso essa mensagem não foi salva.\n\n" +
+        "Como você quer chamar o novo repositório?";
+
+    public const string CommitFailed =
+        "O GitHub não aceitou o commit agora, então sua mensagem <b>não</b> foi salva. " +
+        "Me manda de novo daqui a pouco?";
 }

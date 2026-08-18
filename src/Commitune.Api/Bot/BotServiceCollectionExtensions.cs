@@ -12,6 +12,7 @@ public static class BotServiceCollectionExtensions
         services.AddScoped<ITelegramUpdateRouter, TelegramUpdateRouter>();
         services.AddScoped<IConversationHandler, ConversationHandler>();
         services.AddScoped<IRepositoryProvisioner, RepositoryProvisioner>();
+        services.AddScoped<IEntryCommitter, EntryCommitter>();
         services.AddScoped<IGitHubConnectionService, GitHubConnectionService>();
 
         return services;
