@@ -87,7 +87,7 @@ public sealed class ConversationHandler(
     }
 
     /// <summary>
-    /// A plain message. Only a <see cref="OnboardingState.Ready"/> user is writing a diary
+    /// A plain message. Only a <see cref="OnboardingState.Ready"/> user is writing a TIL
     /// entry — mid-onboarding the text belongs to the conversation and must never be committed.
     /// </summary>
     private async Task HandleTextAsync(BotUser user, string text, CancellationToken cancellationToken)
@@ -160,7 +160,7 @@ public sealed class ConversationHandler(
 
     /// <summary>
     /// The product itself: a message from a <see cref="OnboardingState.Ready"/> user becomes a
-    /// commit. Every outcome answers — a message swallowed in silence is the churn risk.
+    /// TIL entry. Every outcome answers — a message swallowed in silence is the churn risk.
     /// </summary>
     private async Task CommitEntryAsync(BotUser user, string text, CancellationToken cancellationToken)
     {
@@ -170,7 +170,9 @@ public sealed class ConversationHandler(
         {
             case EntryCommitOutcome.Committed:
                 await messenger.SendTextAsync(
-                    user.TelegramChatId, BotReplies.EntryCommitted(result.Url), cancellationToken);
+                    user.TelegramChatId,
+                    BotReplies.EntryCommitted(result.Title, result.Tags, result.Url),
+                    cancellationToken);
                 break;
 
             case EntryCommitOutcome.AuthorizationExpired:

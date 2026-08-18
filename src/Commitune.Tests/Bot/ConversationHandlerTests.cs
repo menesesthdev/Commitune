@@ -227,12 +227,19 @@ public class ConversationHandlerTests
         Assert.Equal(OnboardingState.Ready, StateOf());
     }
 
+    /// <summary>
+    /// The confirmation shows the title and tags the bot inferred: the user wrote free-form
+    /// text, and this is where they find out how it was filed — while it is still fresh.
+    /// </summary>
     [Fact]
-    public async Task A_committed_entry_is_confirmed_with_the_link_to_it()
+    public async Task A_committed_entry_is_confirmed_with_its_title_tags_and_link()
     {
         await HandleAsync(OnboardingState.Ready, "uma anotação");
 
-        Assert.Contains(FakeEntryCommitter.EntryUrl.ToString(), _messenger.Single.Text, StringComparison.Ordinal);
+        var confirmation = _messenger.Single.Text;
+        Assert.Contains(FakeEntryCommitter.Title, confirmation, StringComparison.Ordinal);
+        Assert.Contains("postgres", confirmation, StringComparison.Ordinal);
+        Assert.Contains(FakeEntryCommitter.EntryUrl.ToString(), confirmation, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -242,7 +249,24 @@ public class ConversationHandlerTests
 
         await HandleAsync(OnboardingState.Ready, "uma anotação");
 
-        Assert.Equal(BotReplies.EntryCommitted(null), _messenger.Single.Text);
+        Assert.Equal(BotReplies.EntryCommitted(null, null, null), _messenger.Single.Text);
+    }
+
+    /// <summary>
+    /// Telegram parses these replies as HTML, so a title with a <c>&lt;</c> in it would make the
+    /// Bot API reject the whole message — turning a commit that worked into silence.
+    /// </summary>
+    [Fact]
+    public async Task A_title_with_html_in_it_does_not_break_the_confirmation()
+    {
+        _committer.Result = new EntryCommitResult(
+            EntryCommitOutcome.Committed, Title: "List<T> & Span<T>", Tags: ["dotnet"]);
+
+        await HandleAsync(OnboardingState.Ready, "List<T> & Span<T>");
+
+        var confirmation = _messenger.Single.Text;
+        Assert.Contains("List&lt;T&gt; &amp; Span&lt;T&gt;", confirmation, StringComparison.Ordinal);
+        Assert.DoesNotContain("<T>", confirmation, StringComparison.Ordinal);
     }
 
     /// <summary>

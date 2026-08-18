@@ -3,9 +3,9 @@ using Commitune.Domain.Entities;
 namespace Commitune.Api.Bot;
 
 /// <summary>
-/// Commits one message to the user's repository. Separate from the conversation for the same
-/// reason as <see cref="IRepositoryProvisioner"/>: the GitHub failure modes are mapped once,
-/// into outcomes the bot can explain to a user who cannot see them.
+/// Commits one message to the user's repository as a TIL entry. Separate from the conversation
+/// for the same reason as <see cref="IRepositoryProvisioner"/>: the GitHub failure modes are
+/// mapped once, into outcomes the bot can explain to a user who cannot see them.
 /// </summary>
 public interface IEntryCommitter
 {
@@ -27,4 +27,13 @@ public enum EntryCommitOutcome
     Failed,
 }
 
-public readonly record struct EntryCommitResult(EntryCommitOutcome Outcome, Uri? Url = null);
+/// <summary>
+/// <paramref name="Title"/> and <paramref name="Tags"/> are echoed back on success: they are
+/// what the bot inferred from a message the user wrote in free form, and seeing them is how
+/// the user learns the convention took.
+/// </summary>
+public readonly record struct EntryCommitResult(
+    EntryCommitOutcome Outcome,
+    Uri? Url = null,
+    string? Title = null,
+    IReadOnlyList<string>? Tags = null);

@@ -180,7 +180,7 @@ public class RepositoryProvisionerTests
         public Task<CommittedEntry> CommitEntryAsync(
             string accessToken,
             RepositoryReference repository,
-            DiaryEntry entry,
+            TilEntry entry,
             CancellationToken cancellationToken)
             => throw new NotSupportedException();
     }

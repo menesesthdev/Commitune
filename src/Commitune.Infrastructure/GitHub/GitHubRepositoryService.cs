@@ -5,6 +5,12 @@ namespace Commitune.Infrastructure.GitHub;
 
 public sealed class GitHubRepositoryService(IGitHubClientFactory clientFactory) : IGitHubRepositoryService
 {
+    /// <summary>
+    /// How many names an entry may try before giving up. Two TILs about the same topic on the
+    /// same day are normal; ten are a sign of something other than a name collision.
+    /// </summary>
+    public const int MaxPathAttempts = 10;
+
     public async Task<RepositoryReference> CreatePrivateRepositoryAsync(
         string accessToken,
         string repositoryName,
@@ -24,7 +30,7 @@ public sealed class GitHubRepositoryService(IGitHubClientFactory clientFactory) 
             // Gives the Contents API a base commit to write entries against.
             AutoInit = true,
 
-            Description = "Meu diário, escrito pelo Telegram via Commitune.",
+            Description = "O que eu aprendo, registrado pelo Telegram via Commitune.",
         });
 
         return new RepositoryReference(repository.Owner.Login, repository.Name);
@@ -33,70 +39,62 @@ public sealed class GitHubRepositoryService(IGitHubClientFactory clientFactory) 
     public async Task<CommittedEntry> CommitEntryAsync(
         string accessToken,
         RepositoryReference repository,
-        DiaryEntry entry,
+        TilEntry entry,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
-        ArgumentException.ThrowIfNullOrWhiteSpace(entry.Path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(entry.PathPrefix);
 
         var client = clientFactory.Create(accessToken);
 
-        try
+        for (var attempt = 1; attempt <= MaxPathAttempts; attempt++)
         {
-            return await WriteAsync(client, repository, entry, cancellationToken);
-        }
-        catch (Exception exception) when (IsWriteConflict(exception))
-        {
-            // Two messages sent seconds apart land on the same day's file: the sha we read is
-            // already stale by the time we write (409), or the file we thought was missing now
-            // exists (422). Re-reading picks up the entry that won, and the append is applied
-            // on top of it instead of replacing it. One retry — a second conflict is a signal
-            // that something other than a race is wrong, and the user gets told.
             cancellationToken.ThrowIfCancellationRequested();
 
-            return await WriteAsync(client, repository, entry, cancellationToken);
+            var path = CandidatePath(entry.PathPrefix, attempt);
+
+            if (await ExistsAsync(client, repository, path))
+            {
+                continue;
+            }
+
+            try
+            {
+                var change = await client.Repository.Content.CreateFile(
+                    repository.Owner,
+                    repository.Name,
+                    path,
+                    new CreateFileRequest(entry.CommitMessage, entry.Content));
+
+                return new CommittedEntry(
+                    change.Commit.Sha,
+                    path,
+                    Uri.TryCreate(change.Content?.HtmlUrl, UriKind.Absolute, out var url) ? url : null);
+            }
+            catch (ApiException exception) when (IsWriteConflict(exception))
+            {
+                // Two messages sent seconds apart resolved to the same name: the path was free
+                // when we looked and taken by the time we wrote. Nothing to merge — the next
+                // name is free, and neither entry is lost.
+            }
         }
-    }
 
-    private static async Task<CommittedEntry> WriteAsync(
-        IGitHubClient client,
-        RepositoryReference repository,
-        DiaryEntry entry,
-        CancellationToken cancellationToken)
-    {
-        var existing = await FindFileAsync(client, repository, entry.Path);
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var change = existing is null
-            ? await client.Repository.Content.CreateFile(
-                repository.Owner,
-                repository.Name,
-                entry.Path,
-                new CreateFileRequest(entry.CommitMessage, entry.NewFileContent))
-            : await client.Repository.Content.UpdateFile(
-                repository.Owner,
-                repository.Name,
-                entry.Path,
-                new UpdateFileRequest(
-                    entry.CommitMessage,
-                    Append(existing.Content, entry.AppendedBlock),
-                    existing.Sha));
-
-        return new CommittedEntry(
-            change.Commit.Sha,
-            Uri.TryCreate(change.Content?.HtmlUrl, UriKind.Absolute, out var url) ? url : null);
+        throw new EntryPathUnavailableException(entry.PathPrefix, MaxPathAttempts);
     }
 
     /// <summary>
-    /// The day's file, or <c>null</c> when this is the first entry of the day.
+    /// First entry of the day about a topic keeps the plain name; the ones after it are
+    /// numbered, so a path is never reused and never overwritten.
     /// </summary>
+    private static string CandidatePath(string pathPrefix, int attempt)
+        => attempt == 1 ? $"{pathPrefix}.md" : $"{pathPrefix}-{attempt}.md";
+
     /// <remarks>
     /// A deleted repository answers 404 here too, and the two are indistinguishable at this
-    /// point. Treating it as "new day" is safe: the create that follows answers 404 as well,
-    /// and the caller reads that as the repository being gone.
+    /// point. Treating it as "free" is safe: the create that follows answers 404 as well, and
+    /// the caller reads that as the repository being gone.
     /// </remarks>
-    private static async Task<RepositoryContent?> FindFileAsync(
+    private static async Task<bool> ExistsAsync(
         IGitHubClient client,
         RepositoryReference repository,
         string path)
@@ -106,30 +104,18 @@ public sealed class GitHubRepositoryService(IGitHubClientFactory clientFactory) 
             var contents = await client.Repository.Content.GetAllContents(
                 repository.Owner, repository.Name, path);
 
-            var file = contents.FirstOrDefault();
-
-            if (file is not null && file.Content is null)
-            {
-                // GitHub stops inlining content past 1 MB. Appending to what we can read would
-                // silently truncate the day, so refuse instead.
-                throw new InvalidOperationException(
-                    $"The Contents API did not return the body of '{path}'; it is too large to append to.");
-            }
-
-            return file;
+            return contents.Count > 0;
         }
         catch (NotFoundException)
         {
-            return null;
+            return false;
         }
     }
 
-    /// <summary>Keeps exactly one blank line between the day's entries.</summary>
-    private static string Append(string existing, string block)
-        => $"{existing.TrimEnd('\n')}\n\n{block}";
-
-    private static bool IsWriteConflict(Exception exception) => exception is ApiException
-    {
-        StatusCode: HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity,
-    };
+    /// <summary>
+    /// The two shapes GitHub uses to say "someone else wrote this path first": a stale sha
+    /// (409) and a create over a file that now exists (422).
+    /// </summary>
+    private static bool IsWriteConflict(ApiException exception)
+        => exception.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity;
 }

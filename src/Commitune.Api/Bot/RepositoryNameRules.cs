@@ -40,7 +40,7 @@ public static class RepositoryNameRules
             {
                 builder.Append('-');
             }
-            else if (RemoveAccent(character) is { } unaccented)
+            else if (Accents.Fold(character) is { } unaccented)
             {
                 builder.Append(unaccented);
             }
@@ -58,17 +58,4 @@ public static class RepositoryNameRules
 
     private static bool IsAllowed(char character)
         => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.';
-
-    /// <summary>Portuguese names are full of accents; dropping them beats dropping the letter.</summary>
-    private static char? RemoveAccent(char character) => char.ToLowerInvariant(character) switch
-    {
-        'á' or 'à' or 'â' or 'ã' or 'ä' => 'a',
-        'é' or 'ê' or 'ë' => 'e',
-        'í' or 'ï' => 'i',
-        'ó' or 'ô' or 'õ' or 'ö' => 'o',
-        'ú' or 'ü' => 'u',
-        'ç' => 'c',
-        'ñ' => 'n',
-        _ => null,
-    };
 }

@@ -1,22 +1,53 @@
 # Commitune
 
-> Turn your Telegram messages into private GitHub commits. No sign-up. No dashboard. Just talk to a bot.
+> Turn what you learn into a TIL log on GitHub. No sign-up. No dashboard. Just talk to a bot.
 
-Commitune is a Telegram bot that converts every message you send into a commit on your own private GitHub repository. There's no website registration and no login form — you connect your GitHub account directly inside the Telegram conversation, choose a repository name, and start writing. Every message becomes a permanent, timestamped entry in your git history.
+Commitune is a Telegram bot that turns every message you send into a **TIL** (Today I Learned) entry committed to your own GitHub repository. There's no website registration and no login form — you connect your GitHub account directly inside the Telegram conversation, choose a repository name, and start writing. Each message becomes a dated, tagged Markdown file, and a commit whose subject is what you learned.
 
 ## How it works
 
 1. **Start the bot** — open the bot on Telegram (deep link from the landing page) and send `/start`.
 2. **Connect GitHub** — tap the inline button, authorize Commitune on GitHub's own consent screen (one tap, revocable anytime).
 3. **Name your repository** — tell the bot what to call it. Commitune creates it for you — **always as a private repository**.
-4. **Send messages** — anything you type from that point on becomes a commit in your repo.
-5. **Watch your graph fill up** — check your GitHub profile and see your contribution graph grow, day by day.
+4. **Write what you learned** — the first line becomes the title, the rest becomes the body, and any `#tag` becomes a tag.
+5. **Watch it add up** — a searchable log of everything you learned, and a contribution graph that fills in as you go.
 
 No dashboard. No password. The bot *is* the product.
 
+## What an entry looks like
+
+A message like this:
+
+```
+Índice não entra quando a coluna tem função
+No Postgres, WHERE lower(email) = ... ignora o índice de email.
+Precisa de índice na expressão. #postgres #indices
+```
+
+becomes `til/2026-08-18-indice-nao-entra-quando-a-coluna-tem-funcao.md`:
+
+```markdown
+---
+title: "Índice não entra quando a coluna tem função"
+date: 2026-08-18T22:30:00-03:00
+tags: [postgres, indices]
+---
+
+# Índice não entra quando a coluna tem função
+
+No Postgres, WHERE lower(email) = ... ignora o índice de email.
+Precisa de índice na expressão.
+```
+
+committed as `TIL: Índice não entra quando a coluna tem função`.
+
+Nothing about the convention is mandatory: a one-line message with no tags is a perfectly good entry. Two entries about the same topic on the same day get their own files (`-2`, `-3`, …) — an entry is never written over another.
+
 ## Why private repos only
 
-Commitune never creates a public repository, regardless of what the user asks for. Personal diary entries, notes, and daily logs are private by default and by design — this is a hard rule enforced at the API call level, not a UI default that can be silently skipped. See [`CLAUDE.md`](./CLAUDE.md) for the exact enforcement rule.
+Commitune never creates a public repository, regardless of what the user asks for. A learning log starts as personal notes, and notes are private by default and by design — this is a hard rule enforced at the API call level, not a UI default that can be silently skipped. See [`CLAUDE.md`](./CLAUDE.md) for the exact enforcement rule.
+
+If you want the log to be a public portfolio, flip the repository's visibility yourself on GitHub. That is a decision with consequences — it publishes everything already written — so it stays with the person who wrote the entries.
 
 ## Architecture
 
@@ -97,6 +128,7 @@ You'll also need a public HTTPS URL for the Telegram webhook during local develo
 - [ ] Support for multiple repos per user
 - [ ] Web landing page with live preview image
 - [ ] Retry queue for failed commits (GitHub rate limits, downtime)
+- [ ] Generated `README.md` index of entries, grouped by tag
 
 ## License
 

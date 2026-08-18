@@ -9,67 +9,154 @@ public class EntryFormatterTests
 
     /// <summary>
     /// The entry belongs to the day the user was living, not to the UTC day it fell in.
-    /// Anything else files an evening's writing under tomorrow — and splits the day in two.
+    /// Anything else dates an evening's learning as tomorrow.
     /// </summary>
     [Fact]
-    public void Files_a_late_night_entry_under_the_users_day()
+    public void Dates_a_late_night_entry_by_the_users_day()
     {
-        var entry = EntryFormatter.Format(LateNight, "escrevi isso quase meia-noite");
+        var entry = EntryFormatter.Format(LateNight, "Índices parciais no Postgres");
 
-        Assert.Equal("diario/2026/08/2026-08-18.md", entry.Path);
-        Assert.Contains("## 22:30", entry.AppendedBlock, StringComparison.Ordinal);
+        Assert.Equal("til/2026-08-18-indices-parciais-no-postgres", entry.PathPrefix);
+        Assert.Contains("date: 2026-08-18T22:30:00-03:00", entry.Content, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Pads_the_month_so_paths_sort_the_way_the_year_runs()
+    public void The_first_line_is_the_title_and_the_rest_is_the_body()
     {
-        var entry = EntryFormatter.Format(new DateTimeOffset(2026, 1, 5, 12, 0, 0, TimeSpan.Zero), "oi");
+        var entry = EntryFormatter.Format(
+            LateNight,
+            "Índice não entra com função na coluna\nNo Postgres, WHERE lower(email) ignora o índice.");
 
-        Assert.Equal("diario/2026/01/2026-01-05.md", entry.Path);
+        Assert.Equal("Índice não entra com função na coluna", entry.Title);
+        Assert.Equal(
+            """
+            ---
+            title: "Índice não entra com função na coluna"
+            date: 2026-08-18T22:30:00-03:00
+            tags: []
+            ---
+
+            # Índice não entra com função na coluna
+
+            No Postgres, WHERE lower(email) ignora o índice.
+
+            """,
+            entry.Content.ReplaceLineEndings("\n"));
     }
 
     [Fact]
-    public void A_new_day_starts_the_file_with_the_date_as_a_heading()
+    public void A_one_line_entry_is_a_whole_entry()
     {
-        var entry = EntryFormatter.Format(LateNight, "primeira do dia");
+        var entry = EntryFormatter.Format(LateNight, "TimeProvider existe desde o .NET 8");
 
-        Assert.Equal("# 18/08/2026\n\n## 22:30\n\nprimeira do dia\n", entry.NewFileContent);
+        // No body: repeating the title underneath it would be noise in every short entry.
+        Assert.EndsWith("# TimeProvider existe desde o .NET 8\n", entry.Content, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void An_entry_added_to_a_day_already_started_carries_only_its_own_block()
+    public void Tags_come_out_of_the_message_and_into_the_frontmatter()
     {
-        var entry = EntryFormatter.Format(LateNight, "mais uma");
+        var entry = EntryFormatter.Format(LateNight, "Índice parcial #postgres #índices");
 
-        Assert.Equal("## 22:30\n\nmais uma\n", entry.AppendedBlock);
-        Assert.EndsWith(entry.AppendedBlock, entry.NewFileContent, StringComparison.Ordinal);
+        Assert.Equal(["postgres", "indices"], entry.Tags);
+        Assert.Contains("tags: [postgres, indices]", entry.Content, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Trims_the_message_without_touching_what_is_inside_it()
+    public void A_tag_is_metadata_so_it_leaves_the_prose()
     {
-        var entry = EntryFormatter.Format(LateNight, "  duas linhas:\n\n  a segunda  \n\n");
+        var entry = EntryFormatter.Format(LateNight, "#postgres Índice parcial economiza espaço");
 
-        Assert.Equal("## 22:30\n\nduas linhas:\n\n  a segunda\n", entry.AppendedBlock);
+        Assert.Equal("Índice parcial economiza espaço", entry.Title);
+        Assert.Equal("til/2026-08-18-indice-parcial-economiza-espaco", entry.PathPrefix);
     }
 
     [Fact]
-    public void The_commit_message_says_when_the_entry_was_written()
+    public void The_same_tag_written_twice_is_one_tag()
     {
-        var entry = EntryFormatter.Format(LateNight, "qualquer coisa");
+        var entry = EntryFormatter.Format(LateNight, "Índices #postgres e mais índices #Postgres");
 
-        Assert.Equal("Entrada de 18/08/2026 às 22:30", entry.CommitMessage);
+        Assert.Equal(["postgres"], entry.Tags);
     }
 
     /// <summary>
-    /// The subject line is visible in places the file is not — notification emails, the
-    /// contribution graph tooltip, a shared screen. The entry stays inside the file.
+    /// A tag has to start with a letter, so numbering inside a sentence survives as prose.
     /// </summary>
     [Fact]
-    public void The_commit_message_never_carries_the_entry_itself()
+    public void A_number_after_a_hash_is_not_a_tag()
     {
-        var entry = EntryFormatter.Format(LateNight, "hoje o resultado do exame chegou");
+        var entry = EntryFormatter.Format(LateNight, "Corrigi o erro #1 do backlog");
 
-        Assert.DoesNotContain("exame", entry.CommitMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(entry.Tags);
+        Assert.Equal("Corrigi o erro #1 do backlog", entry.Title);
+    }
+
+    [Fact]
+    public void An_entry_without_tags_still_has_the_field()
+    {
+        // Predictable frontmatter beats pretty frontmatter: anything reading the repository
+        // later gets the same shape from every file.
+        var entry = EntryFormatter.Format(LateNight, "Sem tags aqui");
+
+        Assert.Contains("tags: []", entry.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_long_first_line_becomes_a_short_title_without_losing_the_text()
+    {
+        var text =
+            "Descobri que o EF Core traduz Any() para EXISTS em vez de COUNT, o que muda o plano " +
+            "de execução inteiro em tabelas grandes";
+
+        var entry = EntryFormatter.Format(LateNight, text);
+
+        Assert.True(entry.Title.Length <= EntryFormatter.MaxTitleLength);
+        Assert.EndsWith("…", entry.Title, StringComparison.Ordinal);
+
+        // Elided in the title, intact in the body.
+        Assert.Contains("tabelas grandes", entry.Content, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Índice não entra", "til/2026-08-18-indice-nao-entra")]
+    [InlineData("C# 14: field keyword", "til/2026-08-18-c-14-field-keyword")]
+    [InlineData("   espaços    demais   ", "til/2026-08-18-espacos-demais")]
+    [InlineData("🎉🎉🎉", "til/2026-08-18-til")]
+    public void The_path_is_ascii_lowercase_and_hyphenated(string text, string expected)
+        => Assert.Equal(expected, EntryFormatter.Format(LateNight, text).PathPrefix);
+
+    /// <summary>
+    /// The subject line is what a learning log looks like from the outside — on the profile, in
+    /// a diff, a year later. "Entry of 18/08" would tell that reader nothing.
+    /// </summary>
+    [Fact]
+    public void The_commit_subject_carries_the_title()
+    {
+        var entry = EntryFormatter.Format(LateNight, "Índices parciais no Postgres");
+
+        Assert.Equal("TIL: Índices parciais no Postgres", entry.CommitMessage);
+    }
+
+    [Fact]
+    public void The_commit_subject_stays_within_git_conventions()
+    {
+        var entry = EntryFormatter.Format(LateNight, new string('a', 200));
+
+        Assert.True(entry.CommitMessage.Length <= 72, entry.CommitMessage);
+    }
+
+    /// <summary>
+    /// A title with a quote or a colon in it is the classic way to write invalid YAML and only
+    /// find out when something tries to parse the repository.
+    /// </summary>
+    [Fact]
+    public void A_title_full_of_yaml_punctuation_is_quoted_and_escaped()
+    {
+        var entry = EntryFormatter.Format(LateNight, """O erro: "sha" wasn't supplied""");
+
+        Assert.Contains(
+            "title: \"O erro: \\\"sha\\\" wasn't supplied\"",
+            entry.Content,
+            StringComparison.Ordinal);
     }
 }

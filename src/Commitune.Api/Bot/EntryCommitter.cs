@@ -58,11 +58,12 @@ public sealed class EntryCommitter(
             var committed = await repositories.CommitEntryAsync(
                 accessToken, new RepositoryReference(owner, name), entry, cancellationToken);
 
-            // Safe to log: ids and a path built from a date, never the entry itself.
-            logger.LogInformation(
-                "Committed an entry for user {TelegramUserId} at {Path}.", user.TelegramUserId, entry.Path);
+            // The id and nothing else: the path is built from the user's own words now, so
+            // logging it would put the entry itself in the server log.
+            logger.LogInformation("Committed a TIL for user {TelegramUserId}.", user.TelegramUserId);
 
-            return new EntryCommitResult(EntryCommitOutcome.Committed, committed.Url);
+            return new EntryCommitResult(
+                EntryCommitOutcome.Committed, committed.Url, entry.Title, entry.Tags);
         }
         catch (AuthorizationException)
         {
@@ -77,7 +78,9 @@ public sealed class EntryCommitter(
 
             return await AskForARepositoryAsync(user, cancellationToken);
         }
-        catch (Exception exception) when (exception is ApiException or HttpRequestException or TimeoutException)
+        catch (Exception exception)
+            when (exception is ApiException or HttpRequestException or TimeoutException
+                or EntryPathUnavailableException)
         {
             // Rate limit, a 5xx from GitHub, a network blip. Nothing the user did, and nothing
             // they can fix — but they still hear about it instead of losing the message.

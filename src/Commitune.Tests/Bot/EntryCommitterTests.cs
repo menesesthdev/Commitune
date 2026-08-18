@@ -40,7 +40,7 @@ public class EntryCommitterTests
         var user = _users.Seed(TelegramUserId, OnboardingState.Ready);
         user.ProtectedGithubToken = _tokenProtector.Protect(AccessToken);
         user.RepositoryOwner = "tester";
-        user.RepositoryName = "diario";
+        user.RepositoryName = "til";
 
         return user;
     }
@@ -55,6 +55,22 @@ public class EntryCommitterTests
         Assert.Equal(EntryCommitOutcome.Committed, result.Outcome);
         Assert.Equal(FakeGitHubRepositoryService.EntryUrl, result.Url);
         Assert.Equal(OnboardingState.Ready, user.State);
+    }
+
+    /// <summary>
+    /// The bot inferred a title and tags from free-form text; the conversation needs both to
+    /// show the user what it understood.
+    /// </summary>
+    [Fact]
+    public async Task Reports_back_what_it_understood_from_the_message()
+    {
+        var user = SeedReadyUser();
+
+        var result = await CreateCommitter().CommitAsync(
+            user, "Índices parciais no Postgres #postgres", CancellationToken.None);
+
+        Assert.Equal("Índices parciais no Postgres", result.Title);
+        Assert.Equal(["postgres"], result.Tags);
     }
 
     [Fact]
@@ -74,7 +90,7 @@ public class EntryCommitterTests
 
         await CreateCommitter().CommitAsync(user, "uma anotação", CancellationToken.None);
 
-        Assert.Equal(new RepositoryReference("tester", "diario"), _repositories.UsedRepository);
+        Assert.Equal(new RepositoryReference("tester", "til"), _repositories.UsedRepository);
     }
 
     [Fact]
@@ -84,8 +100,8 @@ public class EntryCommitterTests
 
         await CreateCommitter().CommitAsync(user, "uma anotação", CancellationToken.None);
 
-        Assert.Equal("diario/2026/08/2026-08-18.md", _repositories.CommittedEntry.Path);
-        Assert.Contains("uma anotação", _repositories.CommittedEntry.AppendedBlock, StringComparison.Ordinal);
+        Assert.Equal("til/2026-08-18-uma-anotacao", _repositories.WrittenEntry.PathPrefix);
+        Assert.Contains("uma anotação", _repositories.WrittenEntry.Content, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -185,7 +201,7 @@ public class EntryCommitterTests
         Assert.Equal(EntryCommitOutcome.Failed, result.Outcome);
         Assert.Equal(OnboardingState.Ready, user.State);
         Assert.NotNull(user.ProtectedGithubToken);
-        Assert.Equal("diario", user.RepositoryName);
+        Assert.Equal("til", user.RepositoryName);
     }
 
     [Fact]
@@ -199,16 +215,33 @@ public class EntryCommitterTests
         Assert.Equal(EntryCommitOutcome.Failed, result.Outcome);
     }
 
+    /// <summary>
+    /// Running out of names is not a GitHub failure, but the user still has to hear that the
+    /// entry did not land — the reply is the same, and the silence is what we refuse.
+    /// </summary>
+    [Fact]
+    public async Task Running_out_of_names_is_reported_too()
+    {
+        var user = SeedReadyUser();
+        _repositories.FailWith = new EntryPathUnavailableException("til/2026-08-18-uma-anotacao", 10);
+
+        var result = await CreateCommitter().CommitAsync(user, "uma anotação", CancellationToken.None);
+
+        Assert.Equal(EntryCommitOutcome.Failed, result.Outcome);
+        Assert.Equal(OnboardingState.Ready, user.State);
+    }
+
     private sealed class FakeGitHubRepositoryService : IGitHubRepositoryService
     {
-        public static readonly Uri EntryUrl =
-            new("https://github.com/tester/diario/blob/main/diario/2026/08/2026-08-18.md");
+        public const string EntryPath = "til/2026-08-18-uma-anotacao.md";
+
+        public static readonly Uri EntryUrl = new($"https://github.com/tester/til/blob/main/{EntryPath}");
 
         public string? UsedAccessToken { get; private set; }
 
         public RepositoryReference UsedRepository { get; private set; }
 
-        public DiaryEntry CommittedEntry { get; private set; }
+        public TilEntry WrittenEntry { get; private set; }
 
         public Exception? FailWith { get; set; }
 
@@ -221,7 +254,7 @@ public class EntryCommitterTests
         public Task<CommittedEntry> CommitEntryAsync(
             string accessToken,
             RepositoryReference repository,
-            DiaryEntry entry,
+            TilEntry entry,
             CancellationToken cancellationToken)
         {
             if (FailWith is not null)
@@ -231,9 +264,9 @@ public class EntryCommitterTests
 
             UsedAccessToken = accessToken;
             UsedRepository = repository;
-            CommittedEntry = entry;
+            WrittenEntry = entry;
 
-            return Task.FromResult(new CommittedEntry("c0ffee", EntryUrl));
+            return Task.FromResult(new CommittedEntry("c0ffee", EntryPath, EntryUrl));
         }
     }
 }

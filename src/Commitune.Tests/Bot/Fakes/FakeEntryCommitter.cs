@@ -6,10 +6,14 @@ namespace Commitune.Tests.Bot.Fakes;
 
 public sealed class FakeEntryCommitter : IEntryCommitter
 {
-    public static readonly Uri EntryUrl = new("https://github.com/tester/diario/blob/main/diario/2026/08/2026-08-18.md");
+    public static readonly Uri EntryUrl =
+        new("https://github.com/tester/til/blob/main/til/2026-08-18-indices-parciais.md");
+
+    public const string Title = "Índices parciais";
 
     /// <summary>What the next call returns. Defaults to the happy path.</summary>
-    public EntryCommitResult Result { get; set; } = new(EntryCommitOutcome.Committed, EntryUrl);
+    public EntryCommitResult Result { get; set; } =
+        new(EntryCommitOutcome.Committed, EntryUrl, Title, ["postgres"]);
 
     public string? CommittedText { get; private set; }
 

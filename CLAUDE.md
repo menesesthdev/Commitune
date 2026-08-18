@@ -4,7 +4,7 @@ Guidance for Claude (or any AI coding agent) working in this repository.
 
 ## Project summary
 
-Commitune is a Telegram bot (multi-tenant) that converts user messages into commits on the user's own GitHub repository. Read `README.md` first for the product overview and end-to-end user flow before touching code.
+Commitune is a Telegram bot (multi-tenant) that converts user messages into TIL (Today I Learned) entries committed to the user's own GitHub repository. Read `README.md` first for the product overview, the entry format and the end-to-end user flow before touching code.
 
 ## Non-negotiable rules
 
@@ -28,8 +28,8 @@ Two rules about these documents: **write them in Portuguese** (they exist for th
 
 - **Minimal API, not MVC/Controllers.** The surface is small (webhook, OAuth callback, health check) — controllers would be ceremony without benefit.
 - **Synchronous processing, no message queue for the MVP.** Volume per user is low (a handful of messages a day). A `BackgroundService`/queue adds operational complexity (broker, retries, dead-letter handling) that isn't earning its keep yet. If daily digest batching or GitHub retry-on-failure becomes a real need, revisit — RabbitMQ topic exchange patterns are already used in the author's other project (Clínica Odontológica) and can be ported here if justified.
-- **GitHub Contents API, not LibGit2Sharp.** No local clone to manage per user, no working-directory state to keep in sync — critical for multi-tenant. Trade-off: accept and handle `409` (stale `sha`) with a re-fetch-and-retry, since concurrent writes to the same file are possible (rare, but real, if a user sends multiple messages fast).
-- **Repository name is chosen by the user during onboarding, not auto-generated.** After GitHub authorization, the bot asks the user directly ("What should the repository be called?") before creating it. Do not silently fall back to an auto-generated name (e.g. `diario-<username>`) unless the user explicitly asks for a suggestion.
+- **GitHub Contents API, not LibGit2Sharp.** No local clone to manage per user, no working-directory state to keep in sync — critical for multi-tenant. Trade-off: concurrent writes are possible (rare, but real, if a user sends messages seconds apart), so a `409`/`422` on write has to be handled — see the entry model below for how.
+- **Repository name is chosen by the user during onboarding, not auto-generated.** After GitHub authorization, the bot asks the user directly ("What should the repository be called?") before creating it. Do not silently fall back to an auto-generated name (e.g. `til-<username>`) unless the user explicitly asks for a suggestion.
 - **Lightweight layering, not full DDD/CQRS.** Unlike the author's other .NET projects (Clean Architecture + DDD for a larger domain), this domain is intentionally small: a user, a state, a repo reference. Don't introduce aggregate roots, repositories-of-repositories, or CQRS mediator plumbing here — it adds indirection with no corresponding complexity to manage. Keep `Commitune.Domain` to plain entities plus a state enum.
 
 ## Onboarding state machine
@@ -44,7 +44,22 @@ NotStarted → AwaitingGithubAuth → AwaitingRepoName → Ready ⇄ Paused
 - `Ready → Paused`: on `/pausar`. `Paused → Ready`: on `/start` again or a dedicated resume command.
 - `/desconectar` from any state: revoke the GitHub token, wipe it from storage, return to `NotStarted`.
 
-Any message received while the user is in `AwaitingGithubAuth` or `AwaitingRepoName` must be treated as part of the onboarding conversation (e.g. the repo name being typed), never as a diary entry to commit.
+Any message received while the user is in `AwaitingGithubAuth` or `AwaitingRepoName` must be treated as part of the onboarding conversation (e.g. the repo name being typed), never as a TIL entry to commit.
+
+## Entry model
+
+One message is one entry, written as one new file under `til/`:
+
+```
+til/2026-08-18-indice-nao-entra-com-funcao.md
+```
+
+- **First line is the title, the rest is the body, `#tags` become tags.** Nothing is mandatory — a one-line message with no tags is a valid entry. Do not add required fields, prompts, or a second conversational step to collect metadata: the moment the bot needs a form, the product has lost its argument. `EntryFormatter` owns this parsing and is the only place that should.
+- **Every file carries YAML frontmatter** (`title`, `date`, `tags`) so the repository stays machine-readable, plus an `# H1`, because GitHub's own file view is where anyone actually reads it. `tags` is always present, even when empty — a predictable shape beats a pretty one.
+- **Never overwrite an existing file.** A path that is taken means another entry is there; the new one is numbered (`-2`, `-3`, …). This holds for the concurrent case too, where the collision only surfaces as a `409`/`422` from the Contents API — that is a signal to pick the next name, not to retry the same one.
+- **The commit subject carries the title** (`TIL: <title>`). A history that reads `Entrada de 18/08` is worth nothing to someone scrolling it a year later. The body of the entry stays in the file, never in the subject.
+- **Dates use a fixed −03:00 offset**, not `TimeZoneInfo`: no tzdata dependency in the container, and Brazil has had no DST since 2019. Revisit only when there is a user outside that offset — the fix then is a timezone per user, not a guess.
+- **Never log the entry, the title or the path.** The path is built from the user's own words, so logging it puts the entry in the server log. User ids and HTTP status codes only.
 
 ## User feedback is mandatory
 

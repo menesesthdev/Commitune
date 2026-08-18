@@ -12,13 +12,15 @@ public interface IGitHubRepositoryService
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Appends an entry to its day's file through the Contents API, creating the file when the
-    /// day is new. Implementations must handle the <c>409</c> stale-sha conflict by re-fetching
-    /// the file and retrying.
+    /// Writes an entry as a new file through the Contents API. Implementations must never
+    /// overwrite an existing file: a taken path means another entry is already there, and this
+    /// one gets a name of its own — including when the collision only shows up as a
+    /// <c>409</c>/<c>422</c> because a concurrent write took the path first.
     /// </summary>
+    /// <exception cref="EntryPathUnavailableException">Every candidate path was taken.</exception>
     Task<CommittedEntry> CommitEntryAsync(
         string accessToken,
         RepositoryReference repository,
-        DiaryEntry entry,
+        TilEntry entry,
         CancellationToken cancellationToken);
 }
