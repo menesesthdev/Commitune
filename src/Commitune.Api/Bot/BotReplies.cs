@@ -20,7 +20,43 @@ public static class BotReplies
         "de conseguir commitar qualquer coisa. Toque no botão abaixo para terminar.";
 
     public const string AskRepoName =
-        "Como você quer chamar o repositório? Me manda só o nome (ex.: <code>diario</code>).";
+        "GitHub conectado! Como você quer chamar o repositório? " +
+        "Me manda só o nome (ex.: <code>diario</code>).";
+
+    /// <summary>The same question asked again later, without the "just connected" framing.</summary>
+    public const string AskRepoNameAgain =
+        "Ainda falta escolher o nome do repositório. Como quer chamar? " +
+        "(ex.: <code>diario</code>)";
+
+    public const string Reconnected =
+        "Reconectado com o GitHub. Seu repositório continua o mesmo — pode seguir escrevendo.";
+
+    public const string AuthorizationFailed =
+        "O GitHub recusou a autorização. Mande /start para tentar de novo.";
+
+    public const string AuthorizationExpired =
+        "Sua autorização do GitHub não vale mais — pode ter sido revogada por lá. " +
+        "Mande /start para reconectar.";
+
+    public const string RepoNameTaken =
+        "Você já tem um repositório com esse nome. Me manda outro?";
+
+    public const string CreatingRepo =
+        "Criando seu repositório privado…";
+
+    /// <summary>The name broke GitHub's rules and we have nothing sensible to suggest.</summary>
+    public const string RepoNameInvalid =
+        "Esse nome não serve para o GitHub. Vale usar letras, números, <code>-</code>, " +
+        "<code>_</code> e <code>.</code> — sem espaços nem acentos. Como quer chamar?";
+
+    /// <summary>Same, but the user's text cleans up into something legal worth offering.</summary>
+    public static string RepoNameInvalidWithSuggestion(string suggestion)
+        => "Esse nome não serve para o GitHub (nada de espaços ou acentos). " +
+            $"Que tal <code>{suggestion}</code>? Se topar, é só me mandar de volta.";
+
+    public static string RepoCreated(string owner, string name)
+        => $"Pronto! Criei <b>{owner}/{name}</b>, privado, e já está tudo ligado.\n\n" +
+            "A partir de agora, toda mensagem que você me mandar vira um commit lá.";
 
     public const string AlreadyReady =
         "Tudo certo por aqui — é só me mandar uma mensagem que ela vira commit. " +

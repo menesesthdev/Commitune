@@ -9,8 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCommituneInfrastructure(builder.Configuration);
 builder.Services.AddProblemDetails();
 
-builder.Services.AddScoped<IConversationHandler, ConversationHandler>();
-builder.Services.AddScoped<ITelegramUpdateRouter, TelegramUpdateRouter>();
+builder.Services.AddCommituneBot();
 
 // Telegram's Update graph relies on the library's own polymorphic converters; without this
 // the webhook body binds to a half-empty object instead of failing loudly.

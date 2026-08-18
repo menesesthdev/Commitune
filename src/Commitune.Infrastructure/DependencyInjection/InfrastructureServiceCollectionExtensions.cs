@@ -93,6 +93,7 @@ public static class InfrastructureServiceCollectionExtensions
             client.DefaultRequestHeaders.UserAgent.Add(new("Commitune", "1.0"));
         });
 
+        services.AddSingleton<IGitHubClientFactory, GitHubClientFactory>();
         services.AddScoped<IGitHubRepositoryService, GitHubRepositoryService>();
 
         services.AddHttpClient(TelegramHttpClientName, client =>

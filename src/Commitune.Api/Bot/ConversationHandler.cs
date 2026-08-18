@@ -11,7 +11,8 @@ public sealed class ConversationHandler(
     IBotUserStore users,
     IBotMessenger messenger,
     IOAuthStateProtector stateProtector,
-    IGitHubOAuthService gitHubOAuth) : IConversationHandler
+    IGitHubOAuthService gitHubOAuth,
+    IRepositoryProvisioner repositoryProvisioner) : IConversationHandler
 {
     public Task HandleAsync(BotUser user, string text, CancellationToken cancellationToken)
     {
@@ -25,7 +26,7 @@ public sealed class ConversationHandler(
                 user.TelegramChatId, BotReplies.NotAvailableYet, cancellationToken),
             not null => messenger.SendTextAsync(
                 user.TelegramChatId, BotReplies.UnknownCommand, cancellationToken),
-            _ => HandleTextAsync(user, cancellationToken),
+            _ => HandleTextAsync(user, text, cancellationToken),
         };
     }
 
@@ -49,7 +50,7 @@ public sealed class ConversationHandler(
                 break;
 
             case OnboardingState.AwaitingRepoName:
-                await messenger.SendTextAsync(user.TelegramChatId, BotReplies.AskRepoName, cancellationToken);
+                await messenger.SendTextAsync(user.TelegramChatId, BotReplies.AskRepoNameAgain, cancellationToken);
                 break;
 
             case OnboardingState.Ready:
@@ -88,7 +89,7 @@ public sealed class ConversationHandler(
     /// A plain message. Only a <see cref="OnboardingState.Ready"/> user is writing a diary
     /// entry — mid-onboarding the text belongs to the conversation and must never be committed.
     /// </summary>
-    private async Task HandleTextAsync(BotUser user, CancellationToken cancellationToken)
+    private async Task HandleTextAsync(BotUser user, string text, CancellationToken cancellationToken)
     {
         switch (user.State)
         {
@@ -101,8 +102,7 @@ public sealed class ConversationHandler(
                 break;
 
             case OnboardingState.AwaitingRepoName:
-                // The repository name. Creating it lands in the next slice.
-                await messenger.SendTextAsync(user.TelegramChatId, BotReplies.ComingSoon, cancellationToken);
+                await CreateRepositoryAsync(user, text, cancellationToken);
                 break;
 
             case OnboardingState.Ready:
@@ -112,6 +112,48 @@ public sealed class ConversationHandler(
 
             case OnboardingState.Paused:
                 await messenger.SendTextAsync(user.TelegramChatId, BotReplies.PausedReminder, cancellationToken);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The text a user in <see cref="OnboardingState.AwaitingRepoName"/> sends is the name of
+    /// their repository. Every outcome is answered — including the ones that leave the user
+    /// where they were, so they know they still owe an answer.
+    /// </summary>
+    private async Task CreateRepositoryAsync(BotUser user, string requestedName, CancellationToken cancellationToken)
+    {
+        await messenger.SendTextAsync(user.TelegramChatId, BotReplies.CreatingRepo, cancellationToken);
+
+        var result = await repositoryProvisioner.ProvisionAsync(user, requestedName, cancellationToken);
+
+        switch (result.Outcome)
+        {
+            case RepositoryProvisionOutcome.Created:
+                var repository = result.Repository!.Value;
+                await messenger.SendTextAsync(
+                    user.TelegramChatId,
+                    BotReplies.RepoCreated(repository.Owner, repository.Name),
+                    cancellationToken);
+                break;
+
+            case RepositoryProvisionOutcome.InvalidName:
+                await messenger.SendTextAsync(
+                    user.TelegramChatId,
+                    result.Suggestion is { Length: > 0 } suggestion
+                        ? BotReplies.RepoNameInvalidWithSuggestion(suggestion)
+                        : BotReplies.RepoNameInvalid,
+                    cancellationToken);
+                break;
+
+            case RepositoryProvisionOutcome.NameAlreadyTaken:
+                await messenger.SendTextAsync(user.TelegramChatId, BotReplies.RepoNameTaken, cancellationToken);
+                break;
+
+            case RepositoryProvisionOutcome.AuthorizationExpired:
+                // The provisioner already put the user back in AwaitingGithubAuth, so the
+                // reply is the link itself rather than an instruction to go find it.
+                await SendAuthorizationLinkAsync(user, BotReplies.AuthorizationExpired, cancellationToken);
                 break;
         }
     }

@@ -21,8 +21,10 @@ public class ConversationHandlerTests
         DataProtectionProvider.Create("commitune-tests"),
         Options.Create(new GitHubOptions()));
 
+    private readonly FakeRepositoryProvisioner _provisioner = new();
+
     private ConversationHandler CreateHandler()
-        => new(_users, _messenger, _stateProtector, new StubGitHubOAuthService());
+        => new(_users, _messenger, _stateProtector, new StubGitHubOAuthService(), _provisioner);
 
     private Task HandleAsync(OnboardingState state, string text)
     {
@@ -121,18 +123,86 @@ public class ConversationHandlerTests
 
     /// <summary>
     /// The rule from CLAUDE.md: mid-onboarding text is part of the conversation, never an
-    /// entry to commit. Nothing here may advance the state machine on its own.
+    /// entry to commit. While waiting on GitHub there is nothing it could mean.
     /// </summary>
-    [Theory]
-    [InlineData(OnboardingState.AwaitingGithubAuth)]
-    [InlineData(OnboardingState.AwaitingRepoName)]
-    public async Task Text_received_mid_onboarding_is_not_treated_as_an_entry(OnboardingState state)
+    [Fact]
+    public async Task Text_received_while_awaiting_auth_is_not_treated_as_an_entry()
     {
-        await HandleAsync(state, "hoje eu implementei o webhook");
+        await HandleAsync(OnboardingState.AwaitingGithubAuth, "hoje eu implementei o webhook");
 
-        Assert.Equal(state, StateOf());
+        Assert.Equal(OnboardingState.AwaitingGithubAuth, StateOf());
         Assert.Equal(0, _users.SaveCount);
         Assert.Single(_messenger.Sent);
+    }
+
+    /// <summary>
+    /// Same rule, other side: while waiting on the name, the text *is* the name — it goes to
+    /// the provisioner, not to a commit.
+    /// </summary>
+    [Fact]
+    public async Task Text_received_while_awaiting_the_repo_name_is_the_repo_name()
+    {
+        await HandleAsync(OnboardingState.AwaitingRepoName, "  diario  ");
+
+        Assert.Equal("  diario  ", _provisioner.RequestedName);
+        Assert.Equal(OnboardingState.Ready, StateOf());
+    }
+
+    [Fact]
+    public async Task A_created_repository_is_confirmed_by_name_to_the_user()
+    {
+        await HandleAsync(OnboardingState.AwaitingRepoName, "diario");
+
+        var confirmation = _messenger.Sent[^1].Text;
+        Assert.Contains("tester/diario", confirmation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_name_already_in_use_asks_for_another_one_without_advancing()
+    {
+        _provisioner.Result = new RepositoryProvisionResult(RepositoryProvisionOutcome.NameAlreadyTaken);
+
+        await HandleAsync(OnboardingState.AwaitingRepoName, "diario");
+
+        Assert.Equal(OnboardingState.AwaitingRepoName, StateOf());
+        Assert.Equal(BotReplies.RepoNameTaken, _messenger.Sent[^1].Text);
+    }
+
+    [Fact]
+    public async Task An_invalid_name_offers_the_cleaned_up_version()
+    {
+        _provisioner.Result = new RepositoryProvisionResult(
+            RepositoryProvisionOutcome.InvalidName, Suggestion: "meu-diario");
+
+        await HandleAsync(OnboardingState.AwaitingRepoName, "meu diário");
+
+        Assert.Equal(OnboardingState.AwaitingRepoName, StateOf());
+        Assert.Contains("meu-diario", _messenger.Sent[^1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_invalid_name_with_nothing_to_suggest_still_explains_the_rules()
+    {
+        _provisioner.Result = new RepositoryProvisionResult(RepositoryProvisionOutcome.InvalidName);
+
+        await HandleAsync(OnboardingState.AwaitingRepoName, "???");
+
+        Assert.Equal(BotReplies.RepoNameInvalid, _messenger.Sent[^1].Text);
+    }
+
+    /// <summary>
+    /// An expired authorization is the failure most likely to strand a user, so the reply is
+    /// the reconnect link itself — not a message telling them to go find it.
+    /// </summary>
+    [Fact]
+    public async Task An_expired_authorization_replies_with_a_fresh_link()
+    {
+        _provisioner.Result = new RepositoryProvisionResult(RepositoryProvisionOutcome.AuthorizationExpired);
+
+        await HandleAsync(OnboardingState.AwaitingRepoName, "diario");
+
+        Assert.Equal(OnboardingState.AwaitingGithubAuth, StateOf());
+        Assert.NotNull(_messenger.Sent[^1].Link);
     }
 
     [Fact]
@@ -197,8 +267,11 @@ public class ConversationHandlerTests
     {
         await HandleAsync(state, text);
 
-        var sent = _messenger.Single;
-        Assert.Equal(ChatId, sent.ChatId);
-        Assert.False(string.IsNullOrWhiteSpace(sent.Text));
+        Assert.NotEmpty(_messenger.Sent);
+        Assert.All(_messenger.Sent, sent =>
+        {
+            Assert.Equal(ChatId, sent.ChatId);
+            Assert.False(string.IsNullOrWhiteSpace(sent.Text));
+        });
     }
 }
