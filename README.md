@@ -109,11 +109,17 @@ cp .env.example .env
 # 4. Run
 docker compose up --build
 
-# 5. Point Telegram at the tunnel
+# 5. Point Telegram at the tunnel, and publish the command menu
 scripts/webhook.sh set
+scripts/webhook.sh commands
 ```
 
 Then send `/start` to the bot.
+
+Use a **separate bot for development**: a bot has exactly one webhook, so pointing the same
+token at two environments means whichever ran `setWebhook` last quietly takes every message.
+The same goes for the OAuth App, which has exactly one callback URL. Deployment is in
+[`docs/deploy.md`](./docs/deploy.md).
 
 **Before step 3** you need two things registered:
 

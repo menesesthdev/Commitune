@@ -2,9 +2,10 @@
 #
 # Registers, inspects or removes the Telegram webhook.
 #
-#   scripts/webhook.sh set      point Telegram at $PUBLIC_BASE_URL/telegram/webhook
-#   scripts/webhook.sh info     what Telegram thinks, including the last delivery error
-#   scripts/webhook.sh delete   stop deliveries
+#   scripts/webhook.sh set       point Telegram at $PUBLIC_BASE_URL/telegram/webhook
+#   scripts/webhook.sh info      what Telegram thinks, including the last delivery error
+#   scripts/webhook.sh delete    stop deliveries
+#   scripts/webhook.sh commands  publish the command menu shown in the chat
 #
 # Reads TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET_TOKEN and PUBLIC_BASE_URL from the
 # environment, falling back to .env. The bot token is never printed: it is a
@@ -85,8 +86,20 @@ case "${1:-set}" in
     api deleteWebhook --data-urlencode 'drop_pending_updates=false' | pretty
     ;;
 
+  commands)
+    # The menu Telegram shows next to the text box. Without it the commands
+    # exist but nobody finds them — /repo and /desconectar are unguessable.
+    # Portuguese, like every reply the bot sends.
+    api setMyCommands --data-urlencode 'commands=[
+      {"command":"start","description":"Conectar o GitHub, ou voltar a commitar"},
+      {"command":"repo","description":"Ver ou trocar o repositório dos TILs"},
+      {"command":"pausar","description":"Parar de commitar sem desconectar"},
+      {"command":"desconectar","description":"Revogar o acesso e apagar o token"}
+    ]' | pretty
+    ;;
+
   *)
-    echo "Usage: scripts/webhook.sh [set|info|delete]" >&2
+    echo "Usage: scripts/webhook.sh [set|info|delete|commands]" >&2
     exit 2
     ;;
 esac
