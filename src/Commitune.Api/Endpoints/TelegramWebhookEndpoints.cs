@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Commitune.Api.Bot;
 using Commitune.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 using Telegram.Bot.Types;
@@ -21,10 +22,11 @@ public static class TelegramWebhookEndpoints
         return app;
     }
 
-    private static Task<IResult> HandleUpdateAsync(
+    private static async Task<IResult> HandleUpdateAsync(
         HttpContext httpContext,
         Update update,
         IOptions<TelegramOptions> telegramOptions,
+        ITelegramUpdateRouter router,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -32,14 +34,15 @@ public static class TelegramWebhookEndpoints
         {
             var logger = loggerFactory.CreateLogger(typeof(TelegramWebhookEndpoints));
             logger.LogWarning("Rejected a webhook call with a missing or invalid secret token.");
-            return Task.FromResult(Results.Unauthorized());
+            return Results.Unauthorized();
         }
 
-        // TODO: dispatch the update to the onboarding state machine / commit pipeline.
-        // Whatever it decides, the user must always get a reply — silent failure is a bug.
+        // Processed inline, before answering: no queue in the MVP (see CLAUDE.md). The router
+        // owns the "every message gets a reply" guarantee and does not throw.
+        await router.RouteAsync(update, cancellationToken);
 
         // Always 200 once authenticated: a non-2xx makes Telegram redeliver the same update.
-        return Task.FromResult(Results.Ok());
+        return Results.Ok();
     }
 
     /// <summary>

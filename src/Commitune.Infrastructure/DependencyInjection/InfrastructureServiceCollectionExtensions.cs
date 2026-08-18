@@ -2,10 +2,12 @@ using Commitune.Infrastructure.Configuration;
 using Commitune.Infrastructure.GitHub;
 using Commitune.Infrastructure.Persistence;
 using Commitune.Infrastructure.Security;
+using Commitune.Infrastructure.Telegram;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 
@@ -13,6 +15,9 @@ namespace Commitune.Infrastructure.DependencyInjection;
 
 public static class InfrastructureServiceCollectionExtensions
 {
+    /// <summary>Named client backing <see cref="ITelegramBotClient"/>. See the note on its logging.</summary>
+    public const string TelegramHttpClientName = "telegram";
+
     public static IServiceCollection AddCommituneInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -59,6 +64,9 @@ public static class InfrastructureServiceCollectionExtensions
                 "No Postgres connection string. Set POSTGRES_CONNECTION_STRING or ConnectionStrings:Postgres.");
 
         services.AddDbContext<CommituneDbContext>(options => options.UseNpgsql(connectionString));
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<IBotUserStore, BotUserStore>();
     }
 
     private static void AddCommituneDataProtection(this IServiceCollection services, IConfiguration configuration)
@@ -87,11 +95,25 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddScoped<IGitHubRepositoryService, GitHubRepositoryService>();
 
+        services.AddHttpClient(TelegramHttpClientName, client =>
+            {
+                // The webhook request is held open while the reply is sent, and Telegram gives
+                // up on us long before HttpClient's 100s default would.
+                client.Timeout = TimeSpan.FromSeconds(15);
+            })
+            // Every Bot API URL is https://api.telegram.org/bot<TOKEN>/..., and the default
+            // IHttpClientFactory logging writes that URL at Information level — which puts the
+            // bot token in the logs on every single send. Nothing about this client may be logged.
+            .RemoveAllLoggers();
+
         services.AddSingleton<ITelegramBotClient>(serviceProvider =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<TelegramOptions>>().Value;
-            var httpClient = serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("telegram");
+            var httpClient = serviceProvider.GetRequiredService<IHttpClientFactory>()
+                .CreateClient(TelegramHttpClientName);
             return new TelegramBotClient(options.BotToken, httpClient);
         });
+
+        services.AddSingleton<IBotMessenger, TelegramBotMessenger>();
     }
 }
