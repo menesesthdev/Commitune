@@ -13,18 +13,19 @@ public sealed class ConversationHandler(
     IOAuthStateProtector stateProtector,
     IGitHubOAuthService gitHubOAuth,
     IRepositoryProvisioner repositoryProvisioner,
-    IEntryCommitter entryCommitter) : IConversationHandler
+    IEntryCommitter entryCommitter,
+    IAccountDisconnector accountDisconnector) : IConversationHandler
 {
     public Task HandleAsync(BotUser user, string text, CancellationToken cancellationToken)
     {
-        var command = ParseCommand(text);
+        var (command, argument) = ParseCommand(text);
 
         return command switch
         {
             "/start" => HandleStartAsync(user, cancellationToken),
             "/pausar" => HandlePauseAsync(user, cancellationToken),
-            "/repo" or "/desconectar" => messenger.SendTextAsync(
-                user.TelegramChatId, BotReplies.NotAvailableYet, cancellationToken),
+            "/repo" => HandleRepoAsync(user, argument, cancellationToken),
+            "/desconectar" => HandleDisconnectAsync(user, cancellationToken),
             not null => messenger.SendTextAsync(
                 user.TelegramChatId, BotReplies.UnknownCommand, cancellationToken),
             _ => HandleTextAsync(user, text, cancellationToken),
@@ -87,6 +88,65 @@ public sealed class ConversationHandler(
     }
 
     /// <summary>
+    /// <c>/repo</c> takes the name as an argument (<c>/repo meu-til</c>) instead of asking for
+    /// it in the next message. Asking would put a <c>Ready</c> user into
+    /// <see cref="OnboardingState.AwaitingRepoName"/>, where the TIL they write next would be
+    /// read as a repository name — and there would be no way back out without naming one.
+    /// Bare <c>/repo</c> answers where entries are going today.
+    /// </summary>
+    private async Task HandleRepoAsync(BotUser user, string argument, CancellationToken cancellationToken)
+    {
+        switch (user.State)
+        {
+            case OnboardingState.NotStarted:
+                await messenger.SendTextAsync(user.TelegramChatId, BotReplies.StartFirst, cancellationToken);
+                break;
+
+            case OnboardingState.AwaitingGithubAuth:
+                await SendAuthorizationLinkAsync(user, BotReplies.ConnectAgain, cancellationToken);
+                break;
+
+            case OnboardingState.AwaitingRepoName when argument.Length == 0:
+                await messenger.SendTextAsync(user.TelegramChatId, BotReplies.AskRepoNameAgain, cancellationToken);
+                break;
+
+            case OnboardingState.Ready or OnboardingState.Paused when argument.Length == 0:
+                await messenger.SendTextAsync(user.TelegramChatId, RepositoryStatus(user), cancellationToken);
+                break;
+
+            default:
+                await ProvisionRepositoryAsync(user, argument, cancellationToken);
+                break;
+        }
+    }
+
+    private static string RepositoryStatus(BotUser user)
+        => user.RepositoryOwner is { Length: > 0 } owner && user.RepositoryName is { Length: > 0 } name
+            ? BotReplies.RepositoryInUse(owner, name)
+            // Ready without a repository recorded should not happen; asking for one beats
+            // answering with a blank.
+            : BotReplies.NoRepositoryYet;
+
+    /// <summary>
+    /// <c>/desconectar</c> works from every state and asks nothing back: the entries already
+    /// written stay in the repository, so there is nothing here that a confirmation step would
+    /// be protecting.
+    /// </summary>
+    private async Task HandleDisconnectAsync(BotUser user, CancellationToken cancellationToken)
+    {
+        var outcome = await accountDisconnector.DisconnectAsync(user, cancellationToken);
+
+        var reply = outcome switch
+        {
+            DisconnectOutcome.Disconnected => BotReplies.Disconnected,
+            DisconnectOutcome.DisconnectedWithoutRevoking => BotReplies.DisconnectedWithoutRevoking,
+            _ => BotReplies.NothingToDisconnect,
+        };
+
+        await messenger.SendTextAsync(user.TelegramChatId, reply, cancellationToken);
+    }
+
+    /// <summary>
     /// A plain message. Only a <see cref="OnboardingState.Ready"/> user is writing a TIL
     /// entry — mid-onboarding the text belongs to the conversation and must never be committed.
     /// </summary>
@@ -103,7 +163,7 @@ public sealed class ConversationHandler(
                 break;
 
             case OnboardingState.AwaitingRepoName:
-                await CreateRepositoryAsync(user, text, cancellationToken);
+                await ProvisionRepositoryAsync(user, text, cancellationToken);
                 break;
 
             case OnboardingState.Ready:
@@ -121,8 +181,12 @@ public sealed class ConversationHandler(
     /// their repository. Every outcome is answered — including the ones that leave the user
     /// where they were, so they know they still owe an answer.
     /// </summary>
-    private async Task CreateRepositoryAsync(BotUser user, string requestedName, CancellationToken cancellationToken)
+    private async Task ProvisionRepositoryAsync(BotUser user, string requestedName, CancellationToken cancellationToken)
     {
+        // Read before the provisioner moves the user: an answer given mid-onboarding has to
+        // teach the convention, the same answer given later to /repo does not.
+        var onboarding = user.State == OnboardingState.AwaitingRepoName;
+
         await messenger.SendTextAsync(user.TelegramChatId, BotReplies.CreatingRepo, cancellationToken);
 
         var result = await repositoryProvisioner.ProvisionAsync(user, requestedName, cancellationToken);
@@ -130,10 +194,22 @@ public sealed class ConversationHandler(
         switch (result.Outcome)
         {
             case RepositoryProvisionOutcome.Created:
+            case RepositoryProvisionOutcome.Adopted:
                 var repository = result.Repository!.Value;
+                var created = result.Outcome == RepositoryProvisionOutcome.Created;
                 await messenger.SendTextAsync(
                     user.TelegramChatId,
-                    BotReplies.RepoCreated(repository.Owner, repository.Name),
+                    onboarding
+                        ? BotReplies.RepoReady(repository.Owner, repository.Name, created)
+                        : BotReplies.RepoSwitched(repository.Owner, repository.Name, created),
+                    cancellationToken);
+                break;
+
+            case RepositoryProvisionOutcome.ExistingIsPublic:
+                var publicRepository = result.Repository!.Value;
+                await messenger.SendTextAsync(
+                    user.TelegramChatId,
+                    BotReplies.RepoIsPublic(publicRepository.Owner, publicRepository.Name),
                     cancellationToken);
                 break;
 
@@ -209,25 +285,28 @@ public sealed class ConversationHandler(
     }
 
     /// <summary>
-    /// Returns the normalized command ("/start"), or <c>null</c> when the text is not a command.
-    /// Telegram appends <c>@botname</c> to commands sent in groups.
+    /// Splits a command into its normalized name ("/start") and whatever followed it — the
+    /// repository name, for <c>/repo meu-til</c>. The name is <c>null</c> when the text is not
+    /// a command at all. Telegram appends <c>@botname</c> to commands sent in groups.
     /// </summary>
-    private static string? ParseCommand(string text)
+    private static (string? Command, string Argument) ParseCommand(string text)
     {
         var trimmed = text.TrimStart();
 
         if (!trimmed.StartsWith('/'))
         {
-            return null;
+            return (null, string.Empty);
         }
 
-        var token = trimmed.Split(' ', 2)[0];
+        var parts = trimmed.Split(' ', 2);
+
+        var token = parts[0];
         var at = token.IndexOf('@', StringComparison.Ordinal);
         if (at >= 0)
         {
             token = token[..at];
         }
 
-        return token.ToLowerInvariant();
+        return (token.ToLowerInvariant(), parts.Length > 1 ? parts[1].Trim() : string.Empty);
     }
 }

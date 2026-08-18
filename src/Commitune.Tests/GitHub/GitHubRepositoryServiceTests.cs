@@ -77,6 +77,33 @@ public class GitHubRepositoryServiceTests
             () => service.CreatePrivateRepositoryAsync(AccessToken, "diario", CancellationToken.None));
     }
 
+    /// <summary>
+    /// The lookup behind "point me at a repository I already have". What it reports about
+    /// visibility is what keeps entries out of a public repository, so it is read off the wire.
+    /// </summary>
+    [Fact]
+    public async Task Reports_the_visibility_of_an_existing_repository()
+    {
+        var (service, handler) = CreateService(h => h.Respond(HttpStatusCode.OK, """
+            {"id":1,"name":"blog","full_name":"tester/blog","private":false,
+             "owner":{"id":2,"login":"tester"}}
+            """));
+
+        var existing = await service.FindRepositoryAsync(AccessToken, "tester", "blog", CancellationToken.None);
+
+        Assert.Equal("/repos/tester/blog", Assert.Single(handler.Requests).Uri.AbsolutePath);
+        Assert.False(existing!.Value.IsPrivate);
+        Assert.Equal("tester", existing.Value.Reference.Owner);
+    }
+
+    [Fact]
+    public async Task Reports_nothing_when_there_is_no_such_repository()
+    {
+        var (service, _) = CreateService(h => h.Respond(HttpStatusCode.NotFound, """{"message":"Not Found"}"""));
+
+        Assert.Null(await service.FindRepositoryAsync(AccessToken, "tester", "til", CancellationToken.None));
+    }
+
     [Fact]
     public async Task Refuses_to_call_github_without_a_name()
     {

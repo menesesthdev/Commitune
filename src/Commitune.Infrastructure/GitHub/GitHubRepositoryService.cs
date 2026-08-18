@@ -36,6 +36,32 @@ public sealed class GitHubRepositoryService(IGitHubClientFactory clientFactory) 
         return new RepositoryReference(repository.Owner.Login, repository.Name);
     }
 
+    public async Task<ExistingRepository?> FindRepositoryAsync(
+        string accessToken,
+        string owner,
+        string repositoryName,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryName);
+
+        var client = clientFactory.Create(accessToken);
+
+        try
+        {
+            var repository = await client.Repository.Get(owner, repositoryName);
+
+            return new ExistingRepository(
+                new RepositoryReference(repository.Owner.Login, repository.Name),
+                repository.Private);
+        }
+        catch (NotFoundException)
+        {
+            return null;
+        }
+    }
+
     public async Task<CommittedEntry> CommitEntryAsync(
         string accessToken,
         RepositoryReference repository,

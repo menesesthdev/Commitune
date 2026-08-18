@@ -49,8 +49,12 @@ public static class BotReplies
         "Sua autorização do GitHub não vale mais, então essa mensagem <b>não</b> foi commitada. " +
         "Reconecte no botão abaixo e me mande ela de novo.";
 
+    /// <summary>
+    /// The name is taken by something we could not adopt — an organization's repository, or one
+    /// this token cannot see. A repository of the user's own is used, not refused.
+    /// </summary>
     public const string RepoNameTaken =
-        "Você já tem um repositório com esse nome. Me manda outro?";
+        "Esse nome já está em uso por um repositório que eu não consigo usar. Me manda outro?";
 
     public const string CreatingRepo =
         "Criando seu repositório privado…";
@@ -77,9 +81,57 @@ public static class BotReplies
         "No Postgres, WHERE lower(email) = ... ignora o índice de email. " +
         "Precisa de índice na expressão. #postgres #indices</pre>";
 
-    public static string RepoCreated(string owner, string name)
-        => $"Pronto! Criei <b>{Escape(owner)}/{Escape(name)}</b>, privado, e já está tudo ligado.\n\n"
+    /// <summary>End of onboarding: confirms the repository and teaches the convention.</summary>
+    public static string RepoReady(string owner, string name, bool created)
+        => (created
+                ? $"Pronto! Criei <b>{Escape(owner)}/{Escape(name)}</b>, privado, e já está tudo ligado.\n\n"
+                : $"<b>{Escape(owner)}/{Escape(name)}</b> já existia e é privado, então vou usar ele mesmo.\n\n")
             + HowToWrite;
+
+    /// <summary>
+    /// The same two outcomes, but for a user who already knew all this and just moved where
+    /// their entries go — no need to explain the convention again.
+    /// </summary>
+    public static string RepoSwitched(string owner, string name, bool created)
+        => created
+            ? $"Criei <b>{Escape(owner)}/{Escape(name)}</b>, privado. Seus próximos TILs vão para lá."
+            : $"Pronto — seus próximos TILs vão para <b>{Escape(owner)}/{Escape(name)}</b>.";
+
+    /// <summary>
+    /// Names an existing public repository. Making it private is a decision with consequences
+    /// for whatever is already in it, so it stays with the user, on GitHub.
+    /// </summary>
+    public static string RepoIsPublic(string owner, string name)
+        => $"<b>{Escape(owner)}/{Escape(name)}</b> é público, e eu não commito em repositório " +
+            "público — o que você escreve aqui nasce privado.\n\n" +
+            "Deixe ele privado no GitHub (Settings → Danger Zone → Change visibility) e me " +
+            "mande o comando de novo, ou escolha outro nome.";
+
+    public static string RepositoryInUse(string owner, string name)
+        => $"Seus TILs estão indo para <b>{Escape(owner)}/{Escape(name)}</b>.\n\n" +
+            "Para mudar: <code>/repo nome-do-repositorio</code>";
+
+    public const string NoRepositoryYet =
+        "Ainda não tenho um repositório registrado para você. " +
+        "Me manda <code>/repo nome-do-repositorio</code> que eu resolvo isso.";
+
+    public const string Disconnected =
+        "Desconectei sua conta do GitHub: revoguei a autorização por lá e apaguei o token daqui.\n\n" +
+        "O que você já escreveu continua no seu repositório — eu é que não tenho mais acesso. " +
+        "Quando quiser voltar, é só mandar /start.";
+
+    /// <summary>
+    /// The token is gone from here either way. Saying only "pronto, desconectei" would be a
+    /// half-truth, and the half that is missing is the one the user can act on.
+    /// </summary>
+    public const string DisconnectedWithoutRevoking =
+        "Apaguei o token daqui e não vou mais commitar nada — mas o GitHub não confirmou a " +
+        "revogação, então a autorização pode continuar listada por lá.\n\n" +
+        "Se quiser garantir, revogue em " +
+        "<a href=\"https://github.com/settings/applications\">github.com/settings/applications</a>.";
+
+    public const string NothingToDisconnect =
+        "Não tem nada conectado por aqui. Mande /start se quiser conectar sua conta do GitHub.";
 
     public const string AlreadyReady =
         "Tudo certo por aqui — é só me mandar o que você aprendeu que eu commito. " +
@@ -102,10 +154,7 @@ public static class BotReplies
         "Ainda não nos conhecemos! Mande /start para conectar sua conta do GitHub.";
 
     public const string UnknownCommand =
-        "Não conheço esse comando. Os que eu entendo são: /start e /pausar.";
-
-    public const string NotAvailableYet =
-        "Esse comando ainda não está disponível — estou terminando essa parte.";
+        "Não conheço esse comando. Os que eu entendo são: /start, /repo, /pausar e /desconectar.";
 
     public const string UnsupportedMessage =
         "Por enquanto eu só entendo mensagens de texto.";

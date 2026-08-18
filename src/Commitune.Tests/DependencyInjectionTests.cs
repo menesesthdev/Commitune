@@ -50,6 +50,7 @@ public class DependencyInjectionTests
     [InlineData(typeof(IGitHubConnectionService))]
     [InlineData(typeof(IRepositoryProvisioner))]
     [InlineData(typeof(IEntryCommitter))]
+    [InlineData(typeof(IAccountDisconnector))]
     [InlineData(typeof(IBotUserStore))]
     [InlineData(typeof(IBotMessenger))]
     [InlineData(typeof(IGitHubOAuthService))]

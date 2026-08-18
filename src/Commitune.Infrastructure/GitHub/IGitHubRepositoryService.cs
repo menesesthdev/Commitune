@@ -12,6 +12,17 @@ public interface IGitHubRepositoryService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Looks up a repository the user already has, or <c>null</c> when there is none by that
+    /// name. Used to point Commitune at an existing repository instead of creating one — which
+    /// is why the answer carries the visibility: entries are never written to a public one.
+    /// </summary>
+    Task<ExistingRepository?> FindRepositoryAsync(
+        string accessToken,
+        string owner,
+        string repositoryName,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Writes an entry as a new file through the Contents API. Implementations must never
     /// overwrite an existing file: a taken path means another entry is already there, and this
     /// one gets a name of its own — including when the collision only shows up as a

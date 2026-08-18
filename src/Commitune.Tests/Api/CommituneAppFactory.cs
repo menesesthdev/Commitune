@@ -151,6 +151,8 @@ public sealed class FakeGitHubOAuthService : IGitHubOAuthService
 
     public string? ExchangedCode { get; private set; }
 
+    public string? RevokedToken { get; private set; }
+
     public Uri BuildAuthorizationUrl(string state)
         => new($"https://github.com/login/oauth/authorize?client_id=test&state={Uri.EscapeDataString(state)}");
 
@@ -161,7 +163,12 @@ public sealed class FakeGitHubOAuthService : IGitHubOAuthService
         return Task.FromResult(Authorization);
     }
 
-    public Task RevokeAsync(string accessToken, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task RevokeAsync(string accessToken, CancellationToken cancellationToken)
+    {
+        RevokedToken = accessToken;
+
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeGitHubRepositoryService : IGitHubRepositoryService
@@ -182,6 +189,13 @@ public sealed class FakeGitHubRepositoryService : IGitHubRepositoryService
 
         return Task.FromResult(new RepositoryReference("tester", repositoryName));
     }
+
+    public Task<ExistingRepository?> FindRepositoryAsync(
+        string accessToken,
+        string owner,
+        string repositoryName,
+        CancellationToken cancellationToken)
+        => Task.FromResult<ExistingRepository?>(null);
 
     public Task<CommittedEntry> CommitEntryAsync(
         string accessToken,

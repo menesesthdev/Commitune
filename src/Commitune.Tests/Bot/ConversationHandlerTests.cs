@@ -23,9 +23,17 @@ public class ConversationHandlerTests
 
     private readonly FakeRepositoryProvisioner _provisioner = new();
     private readonly FakeEntryCommitter _committer = new();
+    private readonly FakeAccountDisconnector _disconnector = new();
 
     private ConversationHandler CreateHandler()
-        => new(_users, _messenger, _stateProtector, new StubGitHubOAuthService(), _provisioner, _committer);
+        => new(
+            _users,
+            _messenger,
+            _stateProtector,
+            new StubGitHubOAuthService(),
+            _provisioner,
+            _committer,
+            _disconnector);
 
     private Task HandleAsync(OnboardingState state, string text)
     {
@@ -337,6 +345,146 @@ public class ConversationHandlerTests
         await HandleAsync(OnboardingState.Ready, "/inventado");
 
         Assert.Equal(BotReplies.UnknownCommand, _messenger.Single.Text);
+    }
+
+    [Fact]
+    public async Task Repo_alone_answers_where_the_entries_are_going()
+    {
+        _user = _users.Seed(TelegramUserId, OnboardingState.Ready, ChatId);
+        _user.RepositoryOwner = "tester";
+        _user.RepositoryName = "til";
+
+        await CreateHandler().HandleAsync(_user, "/repo", CancellationToken.None);
+
+        Assert.Contains("tester/til", _messenger.Single.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The reason /repo takes an argument: a Ready user who asks about their repository must
+    /// stay Ready. Moving them to AwaitingRepoName would turn their next TIL into a name.
+    /// </summary>
+    [Fact]
+    public async Task Repo_alone_does_not_change_what_the_next_message_means()
+    {
+        await HandleAsync(OnboardingState.Ready, "/repo");
+
+        Assert.Equal(OnboardingState.Ready, StateOf());
+        Assert.Equal(0, _users.SaveCount);
+    }
+
+    [Fact]
+    public async Task Repo_with_a_name_switches_the_repository()
+    {
+        await HandleAsync(OnboardingState.Ready, "/repo outro-til");
+
+        Assert.Equal("outro-til", _provisioner.RequestedName);
+        Assert.Equal(OnboardingState.Ready, StateOf());
+        Assert.Contains("tester/diario", _messenger.Sent[^1].Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>Switching does not re-teach the convention to someone already using it.</summary>
+    [Fact]
+    public async Task Switching_repositories_does_not_repeat_the_onboarding_lesson()
+    {
+        await HandleAsync(OnboardingState.Ready, "/repo outro-til");
+
+        Assert.DoesNotContain(BotReplies.HowToWrite, _messenger.Sent[^1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Naming_the_repository_during_onboarding_still_teaches_the_convention()
+    {
+        await HandleAsync(OnboardingState.AwaitingRepoName, "diario");
+
+        Assert.Contains(BotReplies.HowToWrite, _messenger.Sent[^1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_adopted_repository_is_confirmed_like_any_other()
+    {
+        _provisioner.Result = new RepositoryProvisionResult(
+            RepositoryProvisionOutcome.Adopted, FakeRepositoryProvisioner.Repository);
+
+        await HandleAsync(OnboardingState.Ready, "/repo diario");
+
+        Assert.Equal(OnboardingState.Ready, StateOf());
+        Assert.Contains("tester/diario", _messenger.Sent[^1].Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A public repository is named back to the user, because the fix is on GitHub and they
+    /// need to know which repository to go fix.
+    /// </summary>
+    [Fact]
+    public async Task A_public_repository_is_refused_by_name()
+    {
+        _provisioner.Result = new RepositoryProvisionResult(
+            RepositoryProvisionOutcome.ExistingIsPublic, FakeRepositoryProvisioner.Repository);
+
+        await HandleAsync(OnboardingState.AwaitingRepoName, "diario");
+
+        Assert.Equal(OnboardingState.AwaitingRepoName, StateOf());
+
+        var reply = _messenger.Sent[^1].Text;
+        Assert.Contains("tester/diario", reply, StringComparison.Ordinal);
+        Assert.Contains("público", reply, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Repo_before_connecting_points_back_to_start()
+    {
+        await HandleAsync(OnboardingState.NotStarted, "/repo qualquer-coisa");
+
+        Assert.Equal(BotReplies.StartFirst, _messenger.Single.Text);
+        Assert.Null(_provisioner.RequestedName);
+    }
+
+    [Fact]
+    public async Task Disconnect_wipes_the_connection_and_says_so()
+    {
+        await HandleAsync(OnboardingState.Ready, "/desconectar");
+
+        Assert.True(_disconnector.WasCalled);
+        Assert.Equal(OnboardingState.NotStarted, StateOf());
+        Assert.Equal(BotReplies.Disconnected, _messenger.Single.Text);
+    }
+
+    /// <summary>
+    /// An unconfirmed revocation is still a disconnection here — but the user is told, because
+    /// the part we could not do is the part they can finish themselves.
+    /// </summary>
+    [Fact]
+    public async Task Disconnect_without_a_confirmed_revocation_says_that_too()
+    {
+        _disconnector.Outcome = DisconnectOutcome.DisconnectedWithoutRevoking;
+
+        await HandleAsync(OnboardingState.Ready, "/desconectar");
+
+        Assert.Equal(OnboardingState.NotStarted, StateOf());
+        Assert.Contains("github.com/settings/applications", _messenger.Single.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Disconnect_with_nothing_connected_is_answered_anyway()
+    {
+        _disconnector.Outcome = DisconnectOutcome.NothingToDisconnect;
+
+        await HandleAsync(OnboardingState.NotStarted, "/desconectar");
+
+        Assert.Equal(BotReplies.NothingToDisconnect, _messenger.Single.Text);
+    }
+
+    /// <summary>Disconnecting has to work from every state, including mid-onboarding.</summary>
+    [Theory]
+    [InlineData(OnboardingState.AwaitingGithubAuth)]
+    [InlineData(OnboardingState.AwaitingRepoName)]
+    [InlineData(OnboardingState.Paused)]
+    public async Task Disconnect_works_from_every_state(OnboardingState state)
+    {
+        await HandleAsync(state, "/desconectar");
+
+        Assert.True(_disconnector.WasCalled);
+        Assert.Equal(OnboardingState.NotStarted, StateOf());
     }
 
     public static TheoryData<OnboardingState, string> EveryStateAndInput()

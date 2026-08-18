@@ -191,6 +191,27 @@ public class TelegramWebhookEndpointTests : IDisposable
         Assert.Contains(FakeGitHubRepositoryService.EntryUrl.ToString(), reply, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The promise <c>/desconectar</c> makes, checked against the database the app actually
+    /// wrote: the token is revoked on GitHub and gone from storage, not just marked unused.
+    /// </summary>
+    [Fact]
+    public async Task Disconnecting_revokes_the_grant_and_empties_the_row()
+    {
+        await _app.SeedReadyUserAsync(TelegramUserId, accessToken: "gho_seeded");
+
+        var response = await PostAsync(MessageUpdateJson("/desconectar"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("gho_seeded", _app.GitHubOAuth.RevokedToken);
+
+        var user = await _app.FindUserAsync(TelegramUserId);
+        Assert.Equal(OnboardingState.NotStarted, user!.State);
+        Assert.Null(user.ProtectedGithubToken);
+        Assert.Null(user.GithubLogin);
+        Assert.Null(user.RepositoryName);
+    }
+
     [Fact]
     public async Task The_health_endpoint_answers()
     {

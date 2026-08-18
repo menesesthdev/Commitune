@@ -13,6 +13,7 @@ public static class BotServiceCollectionExtensions
         services.AddScoped<IConversationHandler, ConversationHandler>();
         services.AddScoped<IRepositoryProvisioner, RepositoryProvisioner>();
         services.AddScoped<IEntryCommitter, EntryCommitter>();
+        services.AddScoped<IAccountDisconnector, AccountDisconnector>();
         services.AddScoped<IGitHubConnectionService, GitHubConnectionService>();
 
         return services;

@@ -47,6 +47,8 @@ Nothing about the convention is mandatory: a one-line message with no tags is a 
 
 Commitune never creates a public repository, regardless of what the user asks for. A learning log starts as personal notes, and notes are private by default and by design — this is a hard rule enforced at the API call level, not a UI default that can be silently skipped. See [`CLAUDE.md`](./CLAUDE.md) for the exact enforcement rule.
 
+The same rule holds for a repository Commitune did not create: `/repo <name>` will point at one you already have, but only if it is private. A public one is refused, by name, with the reason.
+
 If you want the log to be a public portfolio, flip the repository's visibility yourself on GitHub. That is a decision with consequences — it publishes everything already written — so it stays with the person who wrote the entries.
 
 ## Architecture
@@ -137,7 +139,8 @@ Then send `/start` to the bot.
 | Command | What it does |
 |---|---|
 | `/start` | Begins onboarding, or shows status if already connected |
-| `/repo` | Change which repository receives commits |
+| `/repo` | Shows which repository receives commits |
+| `/repo <name>` | Points commits at that repository — creating it, or using it if you already have it (and it's private) |
 | `/pausar` | Stop committing without disconnecting |
 | `/desconectar` | Revoke GitHub access and delete the stored token |
 

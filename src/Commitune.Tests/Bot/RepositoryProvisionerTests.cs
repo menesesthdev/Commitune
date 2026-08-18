@@ -93,18 +93,73 @@ public class RepositoryProvisionerTests
         Assert.Equal("meu-diario", result.Suggestion);
     }
 
+    /// <summary>
+    /// The name is taken by the user's own private repository — which is what happens after
+    /// /desconectar, since the repository outlives the authorization. Refusing would leave the
+    /// user unable to go back to the repository they have been writing in.
+    /// </summary>
     [Fact]
-    public async Task Reports_a_name_the_user_already_used()
+    public async Task Adopts_a_private_repository_the_user_already_has()
     {
         var user = SeedAuthorizedUser();
-        _repositories.FailWith = new RepositoryExistsException("diario", new ApiValidationException());
+        user.GithubLogin = "tester";
+        _repositories.FailWith = new RepositoryExistsException("til", new ApiValidationException());
+        _repositories.Existing = new ExistingRepository(new RepositoryReference("tester", "til"), IsPrivate: true);
 
-        var result = await CreateProvisioner().ProvisionAsync(user, "diario", CancellationToken.None);
+        var result = await CreateProvisioner().ProvisionAsync(user, "til", CancellationToken.None);
+
+        Assert.Equal(RepositoryProvisionOutcome.Adopted, result.Outcome);
+        Assert.Equal(OnboardingState.Ready, user.State);
+        Assert.Equal("tester", user.RepositoryOwner);
+        Assert.Equal("til", user.RepositoryName);
+    }
+
+    /// <summary>
+    /// The rule that creation cannot break, applied to the one path that could get around it:
+    /// a repository Commitune did not create is the only one whose visibility is not ours.
+    /// </summary>
+    [Fact]
+    public async Task Refuses_to_write_into_a_public_repository()
+    {
+        var user = SeedAuthorizedUser();
+        user.GithubLogin = "tester";
+        _repositories.FailWith = new RepositoryExistsException("blog", new ApiValidationException());
+        _repositories.Existing = new ExistingRepository(new RepositoryReference("tester", "blog"), IsPrivate: false);
+
+        var result = await CreateProvisioner().ProvisionAsync(user, "blog", CancellationToken.None);
+
+        Assert.Equal(RepositoryProvisionOutcome.ExistingIsPublic, result.Outcome);
+        Assert.Equal(OnboardingState.AwaitingRepoName, user.State);
+        Assert.Null(user.RepositoryName);
+    }
+
+    [Fact]
+    public async Task Reports_a_name_taken_by_a_repository_it_cannot_see()
+    {
+        var user = SeedAuthorizedUser();
+        user.GithubLogin = "tester";
+        _repositories.FailWith = new RepositoryExistsException("til", new ApiValidationException());
+        _repositories.Existing = null;
+
+        var result = await CreateProvisioner().ProvisionAsync(user, "til", CancellationToken.None);
 
         Assert.Equal(RepositoryProvisionOutcome.NameAlreadyTaken, result.Outcome);
 
         // Still owes us a name, so the state must not move.
         Assert.Equal(OnboardingState.AwaitingRepoName, user.State);
+    }
+
+    [Fact]
+    public async Task Cannot_adopt_without_knowing_which_account_to_look_under()
+    {
+        var user = SeedAuthorizedUser();
+        user.GithubLogin = null;
+        _repositories.FailWith = new RepositoryExistsException("til", new ApiValidationException());
+
+        var result = await CreateProvisioner().ProvisionAsync(user, "til", CancellationToken.None);
+
+        Assert.Equal(RepositoryProvisionOutcome.NameAlreadyTaken, result.Outcome);
+        Assert.Null(_repositories.LookedUpOwner);
     }
 
     /// <summary>
@@ -160,6 +215,23 @@ public class RepositoryProvisionerTests
         public string? UsedAccessToken { get; private set; }
 
         public Exception? FailWith { get; set; }
+
+        /// <summary>What the lookup finds when creation reports the name is taken.</summary>
+        public ExistingRepository? Existing { get; set; }
+
+        public string? LookedUpOwner { get; private set; }
+
+        public Task<ExistingRepository?> FindRepositoryAsync(
+            string accessToken,
+            string owner,
+            string repositoryName,
+            CancellationToken cancellationToken)
+        {
+            UsedAccessToken = accessToken;
+            LookedUpOwner = owner;
+
+            return Task.FromResult(Existing);
+        }
 
         public Task<RepositoryReference> CreatePrivateRepositoryAsync(
             string accessToken,

@@ -26,7 +26,7 @@ public sealed class FakeRepositoryProvisioner : IRepositoryProvisioner
         // state the user would actually be left in.
         user.State = Result.Outcome switch
         {
-            RepositoryProvisionOutcome.Created => OnboardingState.Ready,
+            RepositoryProvisionOutcome.Created or RepositoryProvisionOutcome.Adopted => OnboardingState.Ready,
             RepositoryProvisionOutcome.AuthorizationExpired => OnboardingState.AwaitingGithubAuth,
             _ => user.State,
         };

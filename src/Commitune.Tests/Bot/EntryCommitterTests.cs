@@ -251,6 +251,13 @@ public class EntryCommitterTests
             CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task<ExistingRepository?> FindRepositoryAsync(
+            string accessToken,
+            string owner,
+            string repositoryName,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<CommittedEntry> CommitEntryAsync(
             string accessToken,
             RepositoryReference repository,

@@ -5,6 +5,9 @@ using Commitune.Infrastructure.Persistence;
 using Commitune.Infrastructure.Security;
 using Octokit;
 
+// Octokit has a RepositoryReference of its own; ours is the one meant here.
+using RepositoryReference = Commitune.Infrastructure.GitHub.RepositoryReference;
+
 namespace Commitune.Api.Bot;
 
 public sealed class RepositoryProvisioner(
@@ -50,16 +53,13 @@ public sealed class RepositoryProvisioner(
             var repository = await repositories.CreatePrivateRepositoryAsync(
                 accessToken, name, cancellationToken);
 
-            user.RepositoryOwner = repository.Owner;
-            user.RepositoryName = repository.Name;
-            user.State = OnboardingState.Ready;
-            await users.SaveAsync(user, cancellationToken);
+            await PointAtAsync(user, repository, cancellationToken);
 
             return new RepositoryProvisionResult(RepositoryProvisionOutcome.Created, repository);
         }
         catch (RepositoryExistsException)
         {
-            return new RepositoryProvisionResult(RepositoryProvisionOutcome.NameAlreadyTaken);
+            return await AdoptAsync(user, accessToken, name, cancellationToken);
         }
         catch (AuthorizationException)
         {
@@ -77,6 +77,55 @@ public sealed class RepositoryProvisioner(
 
             return new RepositoryProvisionResult(RepositoryProvisionOutcome.InvalidName);
         }
+    }
+
+    /// <summary>
+    /// The name is taken — by the user's own repository, most of the time. Pointing at it beats
+    /// refusing: after <c>/desconectar</c> the old repository is still there, and "you already
+    /// have one with that name" would be a wall the user cannot get past.
+    /// </summary>
+    private async Task<RepositoryProvisionResult> AdoptAsync(
+        BotUser user,
+        string accessToken,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        if (user.GithubLogin is not { Length: > 0 } login)
+        {
+            // No login recorded, so there is no owner to look the repository up under.
+            return new RepositoryProvisionResult(RepositoryProvisionOutcome.NameAlreadyTaken);
+        }
+
+        var existing = await repositories.FindRepositoryAsync(accessToken, login, name, cancellationToken);
+
+        if (existing is not { } repository)
+        {
+            // Create said it exists, Get says it does not: the name belongs to something this
+            // token cannot see. Nothing to adopt.
+            return new RepositoryProvisionResult(RepositoryProvisionOutcome.NameAlreadyTaken);
+        }
+
+        if (!repository.IsPrivate)
+        {
+            // Entries are private by design. Publishing them is the user's decision to make on
+            // GitHub, deliberately — never a side effect of typing a name here.
+            return new RepositoryProvisionResult(
+                RepositoryProvisionOutcome.ExistingIsPublic, repository.Reference);
+        }
+
+        await PointAtAsync(user, repository.Reference, cancellationToken);
+
+        return new RepositoryProvisionResult(RepositoryProvisionOutcome.Adopted, repository.Reference);
+    }
+
+    /// <summary>Records the repository entries go to from now on and makes the user ready.</summary>
+    private async Task PointAtAsync(BotUser user, RepositoryReference repository, CancellationToken cancellationToken)
+    {
+        user.RepositoryOwner = repository.Owner;
+        user.RepositoryName = repository.Name;
+        user.State = OnboardingState.Ready;
+
+        await users.SaveAsync(user, cancellationToken);
     }
 
     /// <summary>

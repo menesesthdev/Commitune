@@ -11,6 +11,8 @@ Commitune is a Telegram bot (multi-tenant) that converts user messages into TIL 
 These override convenience, "the user asked for X", or any refactor that seems reasonable in isolation. Violating any of these is a critical bug, not a style issue.
 
 1. **Every repository created via the GitHub API MUST be private.** The `POST /user/repos` call must always send `"private": true`. There is no code path — onboarding, the `/repo` command, admin tooling, tests — that is allowed to create or leave a repository public. If you're implementing repo creation or find an existing call site, verify this flag explicitly; don't assume a prior implementation got it right.
+
+   The same guarantee on the write side: **entries are never committed to a public repository.** Commitune can be pointed at a repository it did not create (see `/repo` below), and that is the one case where visibility is not private by construction — so it is checked before adopting, and a public repository is refused with the reason. Making a repository public is the user's decision to take on GitHub, deliberately, never a side effect of typing a name into the bot.
 2. **Never log a GitHub token, in full or in part** — not at Debug level, not inside an exception message, not in a request/response logging middleware. Tokens are decrypted only inside the request scope that needs them and discarded immediately after use.
 3. **Tokens are stored encrypted at rest** using ASP.NET Core's Data Protection API. Never add a "plaintext for debugging" path, even temporarily.
 4. **The webhook endpoint must validate `X-Telegram-Bot-Api-Secret-Token`** against the configured secret before processing any update. Reject anything else with 401.
@@ -42,7 +44,9 @@ NotStarted → AwaitingGithubAuth → AwaitingRepoName → Ready ⇄ Paused
 - `AwaitingGithubAuth → AwaitingRepoName`: on successful OAuth callback.
 - `AwaitingRepoName → Ready`: after the repo is created (private!) and confirmed to the user.
 - `Ready → Paused`: on `/pausar`. `Paused → Ready`: on `/start` again or a dedicated resume command.
-- `/desconectar` from any state: revoke the GitHub token, wipe it from storage, return to `NotStarted`.
+- `/desconectar` from any state: revoke the GitHub token, wipe it from storage, return to `NotStarted`. The wipe happens even when the revocation call fails — the user asked to be disconnected, and a failed remote call is not a reason to keep their token. The reply then says the revocation is unconfirmed and points at GitHub's applications page.
+- **`/repo` does not move the state.** It takes the name as an argument (`/repo meu-til`), and bare `/repo` reports where entries are going. Do not "fix" this into a conversational step: a `Ready` user sent to `AwaitingRepoName` would have their next TIL read as a repository name, with no way back out without naming one.
+- **A name that already exists is adopted, not refused** — if the repository is the user's own and private. Refusing is a dead end: the repository outlives the authorization, so after `/desconectar` → `/start` the user could never point back at the repository they had been writing in.
 
 Any message received while the user is in `AwaitingGithubAuth` or `AwaitingRepoName` must be treated as part of the onboarding conversation (e.g. the repo name being typed), never as a TIL entry to commit.
 

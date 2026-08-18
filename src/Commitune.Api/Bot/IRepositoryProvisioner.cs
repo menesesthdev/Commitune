@@ -20,10 +20,23 @@ public enum RepositoryProvisionOutcome
     /// <summary>Created, private, and the user is now <c>Ready</c>.</summary>
     Created,
 
+    /// <summary>
+    /// The repository already existed, is private, and is now the one receiving entries.
+    /// This is what makes a name reusable — after <c>/desconectar</c>, or when the user built
+    /// the repository by hand, "it already exists" is an answer, not a dead end.
+    /// </summary>
+    Adopted,
+
+    /// <summary>
+    /// The repository exists but is public. Commitune does not write entries to a public
+    /// repository, and making one private is the user's decision to take on GitHub.
+    /// </summary>
+    ExistingIsPublic,
+
     /// <summary>GitHub would not accept this name.</summary>
     InvalidName,
 
-    /// <summary>The user already has a repository with this name.</summary>
+    /// <summary>The name is taken by something we cannot adopt (an organization's, say).</summary>
     NameAlreadyTaken,
 
     /// <summary>The stored token no longer works — the user has to reconnect.</summary>
