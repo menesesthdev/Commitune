@@ -86,26 +86,45 @@ commitune/
 
 ## Running locally
 
+Telegram only delivers webhooks to a public HTTPS URL, so local development needs a tunnel. The order below matters: the tunnel URL is what both Telegram and GitHub are configured against.
+
 ```bash
 # 1. Clone
 git clone https://github.com/NICHOLAST0RRES/commitune.git
 cd commitune
 
-# 2. Configure environment variables
-cp .env.example .env
-# fill in: TELEGRAM_BOT_TOKEN, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
-# POSTGRES_CONNECTION_STRING, DATA_PROTECTION_KEY_PATH, WEBHOOK_SECRET_TOKEN
+# 2. Open a tunnel and note the https URL it prints
+ngrok http 5000
 
-# 3. Run
+# 3. Configure environment variables
+cp .env.example .env
+# PUBLIC_BASE_URL   the https URL from ngrok
+# GITHUB_CALLBACK_URL  $PUBLIC_BASE_URL/oauth/github/callback
+# TELEGRAM_BOT_TOKEN   from @BotFather
+# WEBHOOK_SECRET_TOKEN openssl rand -hex 32
+# GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET  from the OAuth App
+
+# 4. Run
 docker compose up --build
+
+# 5. Point Telegram at the tunnel
+scripts/webhook.sh set
 ```
 
-You'll also need a public HTTPS URL for the Telegram webhook during local development (e.g. `ngrok http 5000`) — Telegram will not deliver updates to `localhost`.
+Then send `/start` to the bot.
+
+**Before step 3** you need two things registered:
+
+- **A bot**, from [@BotFather](https://t.me/botfather) — `/newbot` gives you `TELEGRAM_BOT_TOKEN`.
+- **A GitHub OAuth App** ([Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)) — its *Authorization callback URL* must match `GITHUB_CALLBACK_URL` character for character, or GitHub refuses the redirect.
+
+`scripts/webhook.sh info` is the first thing to check when nothing arrives: it reports what URL Telegram is posting to and why the last delivery failed. A `401` there means the secret in `.env` and the one Telegram holds have drifted apart — run `scripts/webhook.sh set` again. A free ngrok session gets a new hostname every restart, so steps 3 and 5 (and the OAuth App's callback URL) have to be redone each time.
 
 ## Environment variables
 
 | Variable | Description |
 |---|---|
+| `PUBLIC_BASE_URL` | Public HTTPS base URL of this app (tunnel in dev, domain in prod) |
 | `TELEGRAM_BOT_TOKEN` | Token from @BotFather |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth App credentials |
 | `GITHUB_CALLBACK_URL` | Callback URL registered on the OAuth App |

@@ -77,10 +77,14 @@ Every commit attempt — success or failure — must produce a reply to the user
 ## Commands to know
 
 ```bash
-dotnet test                          # run the test suite
+dotnet test                          # run the test suite (needs nothing external)
 dotnet run --project src/Commitune.Api
 docker compose up --build            # full local stack
+scripts/webhook.sh set               # register the Telegram webhook at $PUBLIC_BASE_URL
+scripts/webhook.sh info              # what Telegram thinks, incl. the last delivery error
 ```
+
+The integration tests boot the real app with `WebApplicationFactory` and an in-memory database, replacing only the Telegram and GitHub edges — no Postgres, no network, no tunnel. Keep it that way: a suite that needs a live service is a suite that stops being run.
 
 ## What NOT to do
 

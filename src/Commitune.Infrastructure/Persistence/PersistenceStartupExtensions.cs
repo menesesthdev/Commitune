@@ -22,6 +22,14 @@ public static class PersistenceStartupExtensions
 
         var dbContext = scope.ServiceProvider.GetRequiredService<CommituneDbContext>();
 
+        if (!dbContext.Database.IsRelational())
+        {
+            // Nothing to migrate against a provider with no schema — the in-memory one the
+            // integration tests boot the app with. Every real deployment is relational.
+            logger.LogInformation("Non-relational provider in use; skipping migrations.");
+            return;
+        }
+
         var pending = (await dbContext.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
         if (pending.Length == 0)
         {
