@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Data Protection, DI, Options and IHttpClientFactory all come from the
+       shared framework, so no separate Microsoft.Extensions.* packages here. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Octokit" Version="14.0.0" />
+    <PackageReference Include="Telegram.Bot" Version="22.10.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Commitune.Domain\Commitune.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

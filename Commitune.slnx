@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Commitune.Api/Commitune.Api.csproj" />
+    <Project Path="src/Commitune.Domain/Commitune.Domain.csproj" />
+    <Project Path="src/Commitune.Infrastructure/Commitune.Infrastructure.csproj" />
+    <Project Path="src/Commitune.Tests/Commitune.Tests.csproj" />
+  </Folder>
+</Solution>
