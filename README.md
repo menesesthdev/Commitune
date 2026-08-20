@@ -66,7 +66,7 @@ Telegram ──(webhook)──▶ Commitune.Api ──▶ PostgreSQL (user state
 - **GitHub integration**: `Octokit.net`
 - **Database**: PostgreSQL + EF Core
 - **Token encryption**: ASP.NET Core Data Protection API
-- **Landing page**: static HTML/CSS, no build step
+- **Landing page**: static HTML/CSS in the API's `wwwroot`, no build step and no second host
 - **Infra**: Docker Compose on a single EC2 instance, Nginx reverse proxy, Let's Encrypt via Certbot
 
 Messages are processed synchronously — no message queue in the MVP. See [`CLAUDE.md`](./CLAUDE.md) for the reasoning.
@@ -77,10 +77,10 @@ Messages are processed synchronously — no message queue in the MVP. See [`CLAU
 commitune/
 ├── src/
 │   ├── Commitune.Api/             # Minimal API — webhook, OAuth callback, endpoints
+│   │   └── wwwroot/               # Landing page (static HTML/CSS)
 │   ├── Commitune.Domain/          # Entities, value objects, onboarding state machine
 │   ├── Commitune.Infrastructure/  # Postgres repository, GitHub client, Telegram client
 │   └── Commitune.Tests/           # xUnit
-├── landing/                       # Static landing page
 ├── docker-compose.yml
 ├── CLAUDE.md
 └── README.md
@@ -92,7 +92,7 @@ Telegram only delivers webhooks to a public HTTPS URL, so local development need
 
 ```bash
 # 1. Clone
-git clone https://github.com/NICHOLAST0RRES/commitune.git
+git clone https://github.com/menesesthdev/Commitune.git
 cd commitune
 
 # 2. Open a tunnel and note the https URL it prints
@@ -154,7 +154,7 @@ The same goes for the OAuth App, which has exactly one callback URL. Deployment 
 
 - [ ] Daily digest option (batch commits instead of one per message)
 - [ ] Support for multiple repos per user
-- [ ] Web landing page with live preview image
+- [ ] Preview image of a real entry on the landing page
 - [ ] Retry queue for failed commits (GitHub rate limits, downtime)
 - [ ] Generated `README.md` index of entries, grouped by tag
 

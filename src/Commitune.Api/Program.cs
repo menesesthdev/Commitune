@@ -21,6 +21,11 @@ await app.MigrateCommituneDatabaseAsync();
 
 app.UseExceptionHandler();
 
+// The landing page is plain HTML/CSS in wwwroot — no build step, no framework, and no
+// separate host to keep alive: the same app that answers the webhook serves it at "/".
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.MapHealthEndpoints();
 app.MapTelegramWebhookEndpoints();
 app.MapGitHubOAuthEndpoints();

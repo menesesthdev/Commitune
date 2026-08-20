@@ -5,6 +5,9 @@
 
 # dotenv files
 .env
+# Local variants (.env.local, .env.backup-*) carry the same secrets as .env.
+.env.*
+!.env.example
 
 # User-specific files
 *.rsuser

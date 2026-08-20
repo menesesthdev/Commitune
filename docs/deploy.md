@@ -31,7 +31,7 @@ dig +short commitune.menesesthdev.com.br
 
 ```bash
 # 1. Code on the instance
-git clone https://github.com/NICHOLAST0RRES/commitune.git
+git clone https://github.com/menesesthdev/Commitune.git
 cd commitune
 
 # 2. Configuration

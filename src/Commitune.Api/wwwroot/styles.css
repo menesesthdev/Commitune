@@ -1,0 +1,575 @@
+/* Commitune — landing page de uma tela.
+   CSS puro: sem build step e sem nenhum request para fora (nem fonte, nem ícone, nem
+   analytics). O único JavaScript da página é o do botão de tema, no HTML, e ele roda
+   em clique — não há nada em loop.
+
+   Sobre desempenho: não existe `filter: blur()` em lugar nenhum, nem animação de
+   scroll, nem de ponteiro. O que se move continuamente são três coisas minúsculas e
+   baratas (opacity/transform): a luz do fundo, o quadradinho verde do rótulo e os
+   quatro quadrados da logo. O resto anima uma vez, na entrada. */
+
+/* --- temas ----------------------------------------------------------------- */
+/* O tema escuro é o da logo. O claro é branco quente com bege, e troca os verdes
+   pela escala clara do próprio gráfico de contribuições do GitHub — os tons escuros
+   são os únicos que têm contraste sobre papel. */
+
+:root {
+  color-scheme: dark;
+
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface-2: #11161d;
+  --line:      #21262d;
+  --line-2:    #2d333b;
+  --text:      #f0f6fc;
+  --muted:     #8b949e;
+  --faint:     #6e7681;
+  --code-fg:   #c9d1d9;
+  --chip-bg:   rgba(22, 27, 34, .7);
+
+  --accent:      #39d353;
+  --accent-dim:  #26a641;
+  --accent-glow: rgba(57, 211, 83, .55);
+
+  --btn-bg:       #26a641;
+  --btn-bg-hover: #39d353;
+  --btn-fg:       #08130c;
+  --btn-shadow:   rgba(57, 211, 83, .9);
+
+  --cell-0: #10161d;
+  --cell-1: #0e4429;
+  --cell-2: #006d32;
+  --cell-3: #26a641;
+  --cell-4: #39d353;
+
+  --card-shadow: rgba(0, 0, 0, .95);
+  --wash-a:    rgba(38, 166, 65, .16);
+  --wash-b:    rgba(0, 109, 50, .17);
+  --wash-c:    rgba(14, 68, 41, .30);
+  --wash-glow: rgba(57, 211, 83, .16);
+  --sel:       rgba(57, 211, 83, .28);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:        #f7f3ec;
+  --surface:   #fffdf8;
+  --surface-2: #f1eade;
+  --line:      #e3dacb;
+  --line-2:    #d2c6b1;
+  --text:      #1b1a17;
+  --muted:     #5f584c;
+  --faint:     #756c5e;   /* 4,6:1 sobre o bege — o rodapé é texto pequeno */
+  --code-fg:   #2f2b24;
+  --chip-bg:   rgba(255, 253, 248, .8);
+
+  --accent:      #1a7f37;
+  --accent-dim:  #2da44e;
+  --accent-glow: rgba(45, 164, 78, .45);
+
+  /* #2da44e daria só 3,2:1 com o rótulo branco; este passa de 4,5:1. */
+  --btn-bg:       #218739;
+  --btn-bg-hover: #1a7f37;
+  --btn-fg:       #ffffff;
+  --btn-shadow:   rgba(45, 164, 78, .6);
+
+  --cell-0: #e9e1d3;
+  --cell-1: #9be9a8;
+  --cell-2: #40c463;
+  --cell-3: #30a14e;
+  --cell-4: #216e39;
+
+  --card-shadow: rgba(122, 102, 68, .30);
+  --wash-a:    rgba(64, 196, 99, .16);
+  --wash-b:    rgba(33, 110, 57, .09);
+  --wash-c:    rgba(206, 179, 134, .40);
+  --wash-glow: rgba(64, 196, 99, .18);
+  --sel:       rgba(64, 196, 99, .30);
+}
+
+:root {
+  --radius: 14px;
+  --page: 1140px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  /* Uma tela, sem rolagem. As media queries do fim liberam a rolagem quando a tela é
+     baixa demais para o conteúdo caber — melhor rolar do que cortar. */
+  overflow: hidden;
+  transition: background-color .35s var(--ease), color .35s var(--ease);
+}
+
+::selection { background: var(--sel); }
+
+a { color: var(--text); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+code, pre { font-family: var(--mono); }
+
+/* --- fundo ----------------------------------------------------------------- */
+
+/* Gradientes estáticos, pintados uma vez. O ::after é uma luz por cima, com a
+   opacidade indo e voltando — de graça: opacidade é a única propriedade animada e
+   não força repaint. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(760px 520px at 12% -10%, var(--wash-a), transparent 70%),
+    radial-gradient(680px 480px at 88% 8%,   var(--wash-b), transparent 72%),
+    radial-gradient(900px 520px at 50% 118%, var(--wash-c), transparent 72%);
+}
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(620px 420px at 18% 0%, var(--wash-glow), transparent 68%);
+  opacity: .35;
+  will-change: opacity;
+  animation: breathe 9s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { opacity: .28; }
+  50%      { opacity: .85; }
+}
+
+/* --- estrutura da tela ----------------------------------------------------- */
+
+.page {
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0 26px;
+}
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+}
+
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, .94fr);
+  align-items: center;
+  gap: 54px;
+  padding: 8px 0 20px;
+}
+
+.footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  padding: 16px 0 22px;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 0.84rem;
+}
+
+/* --- entrada --------------------------------------------------------------- */
+/* Uma animação só, uma vez, em opacity/transform. Nada observa o scroll. */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.topbar, .eyebrow, h1, .lead, .actions, .badges, .preview, .footer {
+  animation: rise .55s var(--ease) both;
+}
+.eyebrow  { animation-delay: .04s; }
+h1        { animation-delay: .09s; }
+.lead     { animation-delay: .15s; }
+.actions  { animation-delay: .21s; }
+.badges   { animation-delay: .27s; }
+.preview  { animation-delay: .18s; }
+.footer   { animation-delay: .33s; }
+
+/* --- marca ----------------------------------------------------------------- */
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.mark {
+  display: block;
+  border-radius: 8px;
+  transition: transform .5s var(--ease);
+}
+.brand:hover .mark { transform: rotate(-8deg) scale(1.06); }
+
+/* Os quatro quadrados acendem em sequência, como um gráfico de contribuições
+   preenchendo. Quatro retângulos de 10px animando opacidade — custa nada. */
+.mark .m1, .mark .m2, .mark .m3, .mark .m4 {
+  animation: light-up 6s ease-in-out infinite;
+}
+.mark .m1 { animation-delay: 0s; }
+.mark .m2 { animation-delay: 1.5s; }
+.mark .m3 { animation-delay: 3s; }
+.mark .m4 { animation-delay: 4.5s; }
+
+@keyframes light-up {
+  0%, 70%, 100% { opacity: 1; }
+  12%           { opacity: .4; }
+}
+
+.wordmark { font-size: 1.02rem; font-weight: 600; letter-spacing: -0.02em; }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color .2s var(--ease);
+}
+.topbar-link:hover { color: var(--text); }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--chip-bg);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .2s var(--ease), border-color .2s var(--ease),
+              background-color .2s var(--ease);
+}
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+/* No escuro se oferece o sol; no claro, a lua. O ícone mostra para onde se vai. */
+.theme-toggle .i-moon { display: none; }
+:root[data-theme="light"] .theme-toggle .i-sun  { display: none; }
+:root[data-theme="light"] .theme-toggle .i-moon { display: block; }
+
+/* --- coluna do texto ------------------------------------------------------- */
+
+/* min-width: 0 porque item de grid não encolhe abaixo do conteúdo por padrão — sem
+   isso, uma palavra longa empurraria a coluna do arquivo para fora da tela. */
+.copy { min-width: 0; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 20px;
+  padding: 6px 13px 6px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--chip-bg);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pip {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  animation: blink 2.4s ease-in-out infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: .35; transform: scale(.82); }
+}
+.arrow-i { color: var(--accent); }
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 3.5vw + .55rem, 3.15rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  max-width: 15ch;
+}
+h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.lead {
+  margin: 20px 0 0;
+  max-width: 52ch;
+  font-size: 1.02rem;
+  color: var(--muted);
+}
+.lead code {
+  font-size: 0.9em;
+  color: var(--text);
+  background: var(--surface-2);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  margin: 28px 0 0;
+}
+
+/* Altura fixa e line-height 1: o rótulo fica centrado de verdade, com ou sem ícone,
+   em vez de depender do padding vertical acertar a métrica da fonte. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 50px;
+  padding: 0 26px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color .2s var(--ease), transform .2s var(--ease),
+              box-shadow .25s var(--ease);
+}
+.btn-primary {
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .18),
+    0 10px 24px -16px var(--btn-shadow);
+}
+.btn-primary:hover {
+  background: var(--btn-bg-hover);
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .22),
+    0 16px 34px -16px var(--btn-shadow);
+}
+.btn-primary:active { transform: translateY(0); }
+.tg-icon { flex: none; }
+
+/* Os comandos, ao lado do botão: é a documentação inteira do bot em uma linha. */
+.cmds {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.cmds code {
+  font-size: 0.78rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 3px 8px;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.86rem;
+  color: var(--faint);
+}
+.badges li { display: inline-flex; align-items: center; gap: 8px; }
+.tick {
+  width: 7px; height: 7px;
+  border-radius: 2px;
+  background: var(--accent-dim);
+}
+
+/* --- coluna do arquivo ----------------------------------------------------- */
+
+.preview {
+  margin: 0;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 30px 60px -40px var(--card-shadow);
+}
+
+.preview figcaption {
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--faint);
+  font-size: 0.76rem;
+}
+.preview figcaption code { word-break: break-all; }
+
+.code {
+  margin: 0;
+  padding: 16px 18px;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--code-fg);
+  overflow-x: auto;
+}
+.c-punct { color: var(--faint); }
+.c-key   { color: var(--accent); }
+.c-str   { color: var(--code-fg); }
+.c-h1    { color: var(--text); font-weight: 600; }
+
+.commit {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.commit .dot {
+  flex: none;
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+}
+.commit-msg { min-width: 0; overflow-wrap: anywhere; }
+
+.strip {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 3px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.strip i {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: var(--cell-0);
+}
+.strip .l1 { background: var(--cell-1); }
+.strip .l2 { background: var(--cell-2); }
+.strip .l3 { background: var(--cell-3); }
+.strip .l4 { background: var(--cell-4); }
+
+/* --- rodapé ---------------------------------------------------------------- */
+
+.by { margin: 0; }
+.by a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-2);
+  transition: color .2s var(--ease), border-color .2s var(--ease);
+}
+.by a:hover { color: var(--accent); border-bottom-color: var(--accent-dim); }
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+.footer-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color .2s var(--ease);
+}
+.footer-links a:hover { color: var(--accent); }
+
+/* --- caber na tela --------------------------------------------------------- */
+
+/* Telas baixas: encolhe antes de deixar qualquer coisa vazar. */
+@media (max-height: 780px) {
+  .stage { gap: 40px; }
+  .lead { margin-top: 16px; font-size: .97rem; }
+  .actions { margin-top: 22px; }
+  .badges { margin-top: 20px; }
+  .code { font-size: .74rem; line-height: 1.6; padding: 14px 16px; }
+}
+
+@media (max-height: 680px) {
+  .eyebrow { margin-bottom: 14px; }
+  .badges { display: none; }
+  .strip { display: none; }
+}
+
+/* Sem largura para duas colunas: o arquivo sai e o texto fica. */
+@media (max-width: 880px) {
+  .stage {
+    grid-template-columns: 1fr;
+    align-content: center;
+    gap: 0;
+    padding-bottom: 12px;
+  }
+  .preview { display: none; }
+  h1 { max-width: 18ch; font-size: clamp(1.9rem, 7vw, 2.6rem); }
+  .footer { font-size: .8rem; }
+}
+
+/* Tela pequena demais para tudo caber: rolar é melhor do que cortar. */
+@media (max-height: 520px), (max-width: 340px) {
+  body { overflow: auto; }
+  .page { height: auto; min-height: 100svh; }
+}
+
+/* --- sem movimento --------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+  .backdrop::after { opacity: .5; }
+  .btn:hover { transform: none; }
+}
