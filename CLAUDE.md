@@ -24,7 +24,7 @@ These override convenience, "the user asked for X", or any refactor that seems r
 
 For each feature or implementation, write a commit document under `docs/commits/` named `NNNN-slug.md` containing the proposed commit message and a summary of what changed and why. The author reads that document and creates the commit themselves. Staging with `git add` is fine; the commit itself is not yours to make.
 
-Two rules about these documents: **write them in Portuguese** (they exist for the author to read, unlike `README.md` and `CLAUDE.md`, which stay in English), and **`docs/commits/` is gitignored** — they are local review notes, never part of the repository history.
+Two rules about these documents: **write them in Portuguese** (like `README.md` and everything else meant for a reader; `CLAUDE.md` is the exception that stays in English), and **`docs/commits/` is gitignored** — they are local review notes, never part of the repository history.
 
 ## Architecture decisions (and why)
 

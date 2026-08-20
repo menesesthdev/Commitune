@@ -1,22 +1,22 @@
 # Commitune
 
-> Turn what you learn into a TIL log on GitHub. No sign-up. No dashboard. Just talk to a bot.
+> Transforme o que você aprende em um log de TILs no GitHub. Sem cadastro. Sem dashboard. Só uma conversa com um bot.
 
-Commitune is a Telegram bot that turns every message you send into a **TIL** (Today I Learned) entry committed to your own GitHub repository. There's no website registration and no login form — you connect your GitHub account directly inside the Telegram conversation, choose a repository name, and start writing. Each message becomes a dated, tagged Markdown file, and a commit whose subject is what you learned.
+Commitune é um bot do Telegram que transforma cada mensagem que você manda em uma entrada **TIL** (Today I Learned) commitada no seu próprio repositório do GitHub. Não existe cadastro em site nem formulário de login — você conecta sua conta do GitHub dentro da própria conversa do Telegram, escolhe o nome do repositório e começa a escrever. Cada mensagem vira um arquivo Markdown datado e com tags, e um commit cujo assunto é o que você aprendeu.
 
-## How it works
+## Como funciona
 
-1. **Start the bot** — open the bot on Telegram (deep link from the landing page) and send `/start`.
-2. **Connect GitHub** — tap the inline button, authorize Commitune on GitHub's own consent screen (one tap, revocable anytime).
-3. **Name your repository** — tell the bot what to call it. Commitune creates it for you — **always as a private repository**.
-4. **Write what you learned** — the first line becomes the title, the rest becomes the body, and any `#tag` becomes a tag.
-5. **Watch it add up** — a searchable log of everything you learned, and a contribution graph that fills in as you go.
+1. **Abra o bot** — no Telegram (link direto na landing page) e mande `/start`.
+2. **Conecte o GitHub** — toque no botão, autorize o Commitune na tela de consentimento do próprio GitHub (um toque, revogável a qualquer momento).
+3. **Dê nome ao repositório** — diga ao bot como quer chamá-lo. O Commitune cria para você — **sempre como repositório privado**.
+4. **Escreva o que aprendeu** — a primeira linha vira o título, o resto vira o conteúdo, e qualquer `#tag` vira tag.
+5. **Veja acumular** — um log pesquisável de tudo que você aprendeu, e um gráfico de contribuições que enche conforme você escreve.
 
-No dashboard. No password. The bot *is* the product.
+Sem dashboard. Sem senha. O bot *é* o produto.
 
-## What an entry looks like
+## Como é uma entrada
 
-A message like this:
+Uma mensagem assim:
 
 ```
 Índice não entra quando a coluna tem função
@@ -24,7 +24,7 @@ No Postgres, WHERE lower(email) = ... ignora o índice de email.
 Precisa de índice na expressão. #postgres #indices
 ```
 
-becomes `til/2026-08-18-indice-nao-entra-quando-a-coluna-tem-funcao.md`:
+vira `til/2026-08-18-indice-nao-entra-quando-a-coluna-tem-funcao.md`:
 
 ```markdown
 ---
@@ -39,125 +39,125 @@ No Postgres, WHERE lower(email) = ... ignora o índice de email.
 Precisa de índice na expressão.
 ```
 
-committed as `TIL: Índice não entra quando a coluna tem função`.
+commitada como `TIL: Índice não entra quando a coluna tem função`.
 
-Nothing about the convention is mandatory: a one-line message with no tags is a perfectly good entry. Two entries about the same topic on the same day get their own files (`-2`, `-3`, …) — an entry is never written over another.
+Nada na convenção é obrigatório: uma mensagem de uma linha, sem tags, é uma entrada perfeitamente válida. Duas entradas sobre o mesmo assunto no mesmo dia ganham arquivos próprios (`-2`, `-3`, …) — uma entrada nunca é escrita por cima de outra.
 
-## Why private repos only
+## Por que só repositório privado
 
-Commitune never creates a public repository, regardless of what the user asks for. A learning log starts as personal notes, and notes are private by default and by design — this is a hard rule enforced at the API call level, not a UI default that can be silently skipped. See [`CLAUDE.md`](./CLAUDE.md) for the exact enforcement rule.
+O Commitune nunca cria um repositório público, independentemente do que o usuário pedir. Um log de aprendizado começa como anotação pessoal, e anotação é privada por padrão e por decisão — esta é uma regra dura, aplicada na chamada da API, não um default de interface que possa ser pulado em silêncio. O enunciado exato da regra está no [`CLAUDE.md`](./CLAUDE.md).
 
-The same rule holds for a repository Commitune did not create: `/repo <name>` will point at one you already have, but only if it is private. A public one is refused, by name, with the reason.
+A mesma regra vale para um repositório que o Commitune não criou: `/repo <nome>` aponta para um que você já tem, mas só se ele for privado. Um público é recusado, pelo nome, com o motivo.
 
-If you want the log to be a public portfolio, flip the repository's visibility yourself on GitHub. That is a decision with consequences — it publishes everything already written — so it stays with the person who wrote the entries.
+Se você quiser que o log seja um portfólio público, mude a visibilidade do repositório você mesmo, no GitHub. Essa é uma decisão com consequências — ela publica tudo que já foi escrito —, então ela fica com quem escreveu as entradas.
 
-## Architecture
+## Arquitetura
 
 ```
-Telegram ──(webhook)──▶ Commitune.Api ──▶ PostgreSQL (user state)
+Telegram ──(webhook)──▶ Commitune.Api ──▶ PostgreSQL (estado do usuário)
                               │
                               ▼
-                       GitHub REST API
-                    (Contents API — create/update file)
+                       API REST do GitHub
+                  (Contents API — cria/atualiza arquivo)
 ```
 
 - **API**: ASP.NET Core Minimal API (.NET 10)
-- **Telegram integration**: `Telegram.Bot`
-- **GitHub integration**: `Octokit.net`
-- **Database**: PostgreSQL + EF Core
-- **Token encryption**: ASP.NET Core Data Protection API
-- **Landing page**: static HTML/CSS in the API's `wwwroot`, no build step and no second host
-- **Infra**: Docker Compose on a single EC2 instance, Nginx reverse proxy, Let's Encrypt via Certbot
+- **Integração com o Telegram**: `Telegram.Bot`
+- **Integração com o GitHub**: `Octokit.net`
+- **Banco**: PostgreSQL + EF Core
+- **Cifra do token**: API de Data Protection do ASP.NET Core
+- **Landing page**: HTML e CSS estáticos no `wwwroot` da API, sem build step e sem segundo host
+- **Infra**: Docker Compose numa única instância EC2, Nginx como proxy reverso, Let's Encrypt via Certbot
 
-Messages are processed synchronously — no message queue in the MVP. See [`CLAUDE.md`](./CLAUDE.md) for the reasoning.
+As mensagens são processadas de forma síncrona — sem fila no MVP. O raciocínio está no [`CLAUDE.md`](./CLAUDE.md).
 
-## Project structure
+## Estrutura do projeto
 
 ```
 commitune/
 ├── src/
-│   ├── Commitune.Api/             # Minimal API — webhook, OAuth callback, endpoints
-│   │   └── wwwroot/               # Landing page (static HTML/CSS)
-│   ├── Commitune.Domain/          # Entities, value objects, onboarding state machine
-│   ├── Commitune.Infrastructure/  # Postgres repository, GitHub client, Telegram client
+│   ├── Commitune.Api/             # Minimal API — webhook, callback do OAuth, endpoints
+│   │   └── wwwroot/               # Landing page (HTML/CSS estáticos)
+│   ├── Commitune.Domain/          # Entidades, objetos de valor, máquina de estados do onboarding
+│   ├── Commitune.Infrastructure/  # Repositório Postgres, cliente do GitHub, cliente do Telegram
 │   └── Commitune.Tests/           # xUnit
 ├── docker-compose.yml
 ├── CLAUDE.md
 └── README.md
 ```
 
-## Running locally
+## Rodando localmente
 
-Telegram only delivers webhooks to a public HTTPS URL, so local development needs a tunnel. The order below matters: the tunnel URL is what both Telegram and GitHub are configured against.
+O Telegram só entrega webhooks para uma URL HTTPS pública, então o desenvolvimento local precisa de um túnel. A ordem abaixo importa: a URL do túnel é o que tanto o Telegram quanto o GitHub são configurados contra.
 
 ```bash
 # 1. Clone
 git clone https://github.com/menesesthdev/Commitune.git
 cd commitune
 
-# 2. Open a tunnel and note the https URL it prints
+# 2. Abra um túnel e anote a URL https que ele imprime
 ngrok http 5000
 
-# 3. Configure environment variables
+# 3. Configure as variáveis de ambiente
 cp .env.example .env
-# PUBLIC_BASE_URL   the https URL from ngrok
+# PUBLIC_BASE_URL   a URL https do ngrok
 # GITHUB_CALLBACK_URL  $PUBLIC_BASE_URL/oauth/github/callback
-# TELEGRAM_BOT_TOKEN   from @BotFather
+# TELEGRAM_BOT_TOKEN   do @BotFather
 # WEBHOOK_SECRET_TOKEN openssl rand -hex 32
-# GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET  from the OAuth App
+# GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET  do OAuth App
 
-# 4. Run
+# 4. Suba
 docker compose up --build
 
-# 5. Point Telegram at the tunnel, and publish the command menu
+# 5. Aponte o Telegram para o túnel e publique o menu de comandos
 scripts/webhook.sh set
 scripts/webhook.sh commands
 ```
 
-Then send `/start` to the bot.
+Depois, mande `/start` para o bot.
 
-Use a **separate bot for development**: a bot has exactly one webhook, so pointing the same
-token at two environments means whichever ran `setWebhook` last quietly takes every message.
-The same goes for the OAuth App, which has exactly one callback URL. Deployment is in
-[`docs/deploy.md`](./docs/deploy.md).
+Use um **bot separado para desenvolvimento**: um bot tem exatamente um webhook, então apontar o
+mesmo token para dois ambientes significa que quem rodou `setWebhook` por último rouba todas as
+mensagens, em silêncio. O mesmo vale para o OAuth App, que tem exatamente uma URL de callback. O
+deploy está em [`docs/deploy.md`](./docs/deploy.md).
 
-**Before step 3** you need two things registered:
+**Antes do passo 3** você precisa de duas coisas registradas:
 
-- **A bot**, from [@BotFather](https://t.me/botfather) — `/newbot` gives you `TELEGRAM_BOT_TOKEN`.
-- **A GitHub OAuth App** ([Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)) — its *Authorization callback URL* must match `GITHUB_CALLBACK_URL` character for character, or GitHub refuses the redirect.
+- **Um bot**, no [@BotFather](https://t.me/botfather) — `/newbot` te dá o `TELEGRAM_BOT_TOKEN`.
+- **Um OAuth App do GitHub** ([Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)) — a *Authorization callback URL* dele precisa bater com `GITHUB_CALLBACK_URL` caractere por caractere, ou o GitHub recusa o redirect.
 
-`scripts/webhook.sh info` is the first thing to check when nothing arrives: it reports what URL Telegram is posting to and why the last delivery failed. A `401` there means the secret in `.env` and the one Telegram holds have drifted apart — run `scripts/webhook.sh set` again. A free ngrok session gets a new hostname every restart, so steps 3 and 5 (and the OAuth App's callback URL) have to be redone each time.
+`scripts/webhook.sh info` é a primeira coisa a checar quando nada chega: ele diz para qual URL o Telegram está postando e por que a última entrega falhou. Um `401` ali significa que o segredo do `.env` e o que o Telegram guarda se separaram — rode `scripts/webhook.sh set` de novo. Uma sessão gratuita do ngrok ganha um hostname novo a cada reinício, então os passos 3 e 5 (e a callback URL do OAuth App) precisam ser refeitos toda vez.
 
-## Environment variables
+## Variáveis de ambiente
 
-| Variable | Description |
+| Variável | Descrição |
 |---|---|
-| `PUBLIC_BASE_URL` | Public HTTPS base URL of this app (tunnel in dev, domain in prod) |
-| `TELEGRAM_BOT_TOKEN` | Token from @BotFather |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth App credentials |
-| `GITHUB_CALLBACK_URL` | Callback URL registered on the OAuth App |
-| `POSTGRES_CONNECTION_STRING` | Postgres connection string |
-| `DATA_PROTECTION_KEY_PATH` | Path where encryption keys persist across deploys |
-| `WEBHOOK_SECRET_TOKEN` | Validates that webhook calls actually come from Telegram |
+| `PUBLIC_BASE_URL` | URL HTTPS pública desta aplicação (túnel em dev, domínio em produção) |
+| `TELEGRAM_BOT_TOKEN` | Token do @BotFather |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Credenciais do OAuth App do GitHub |
+| `GITHUB_CALLBACK_URL` | URL de callback registrada no OAuth App |
+| `POSTGRES_CONNECTION_STRING` | String de conexão do Postgres |
+| `DATA_PROTECTION_KEY_PATH` | Caminho onde as chaves de cifra sobrevivem aos deploys |
+| `WEBHOOK_SECRET_TOKEN` | Valida que as chamadas do webhook vêm mesmo do Telegram |
 
-## Bot commands
+## Comandos do bot
 
-| Command | What it does |
+| Comando | O que faz |
 |---|---|
-| `/start` | Begins onboarding, or shows status if already connected |
-| `/repo` | Shows which repository receives commits |
-| `/repo <name>` | Points commits at that repository — creating it, or using it if you already have it (and it's private) |
-| `/pausar` | Stop committing without disconnecting |
-| `/desconectar` | Revoke GitHub access and delete the stored token |
+| `/start` | Começa o onboarding, ou mostra a situação se você já está conectado |
+| `/repo` | Mostra qual repositório recebe os commits |
+| `/repo <nome>` | Passa a commitar naquele repositório — criando, ou usando um que você já tem (se for privado) |
+| `/pausar` | Para de commitar sem desconectar |
+| `/desconectar` | Revoga o acesso ao GitHub e apaga o token guardado |
 
 ## Roadmap
 
-- [ ] Daily digest option (batch commits instead of one per message)
-- [ ] Support for multiple repos per user
-- [ ] Preview image of a real entry on the landing page
-- [ ] Retry queue for failed commits (GitHub rate limits, downtime)
-- [ ] Generated `README.md` index of entries, grouped by tag
+- [ ] Digest diário (commits em lote em vez de um por mensagem)
+- [ ] Suporte a vários repositórios por usuário
+- [ ] Imagem de preview de uma entrada real na landing page
+- [ ] Fila de retry para commits que falharam (rate limit do GitHub, indisponibilidade)
+- [ ] `README.md` gerado com o índice das entradas, agrupadas por tag
 
-## License
+## Licença
 
 MIT
